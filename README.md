@@ -24,7 +24,7 @@ A real-time 3D visualization of satellites orbiting Earth, including Starlink, I
 
 ## 🚀 Quick Start
 
-1. Download `sattrak-improved.html`
+1. Download `sattrak.html`
 2. Open in any modern web browser
 3. That's it! No server required.
 
@@ -98,10 +98,9 @@ When live data is unavailable, realistic simulations use these parameters:
 
 ```
 SatTrack/
-├── sattrak-improved.html   # Main application (single file)
+├── sattrak.html            # Main application (single file)
 ├── README.md               # This file
 └── revision/               # Previous versions
-    └── sattrak.html        # Original version
 ```
 
 ## 🔧 Customization
