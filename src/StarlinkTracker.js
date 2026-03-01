@@ -178,6 +178,8 @@ export class StarlinkTracker {
             pixelSizeSlider: document.getElementById('pixelSizeSlider'),
             pixelSizeDisplay: document.getElementById('pixelSizeDisplay'),
             pauseIndicator: document.getElementById('pause-indicator'),
+            localTime: document.getElementById('localTime'),
+            localTzLabel: document.getElementById('localTzLabel'),
             loader: document.getElementById('loader-overlay'),
             loaderText: document.getElementById('loader-text'),
             progress: document.getElementById('progress-fill'),
@@ -249,6 +251,12 @@ export class StarlinkTracker {
             this.setupOrbitVisualizer();
             this.setupISSSprite();
             this.setupEvents();
+
+            // Set timezone label once (browser's local timezone)
+            if (this.ui.localTzLabel) {
+                const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+                this.ui.localTzLabel.textContent = tz;
+            }
 
             await this.loadData();
 
@@ -617,6 +625,7 @@ export class StarlinkTracker {
                 e.preventDefault();
                 this.togglePause();
             }
+            if (key === 'n' || code === 'KeyN') this.resetToNow();
             if (key === 'r' || code === 'KeyR') this.resetCamera();
             if (key === 'c' || code === 'KeyC') this.cycleConstellationLayer();
         };
@@ -671,6 +680,7 @@ export class StarlinkTracker {
         bindBtn('btn-location', () => this.requestGroundStation());
         bindBtn('btn-theme', () => this.toggleTheme());
         bindBtn('btn-keyboard', () => this.toggleKeyboardOverlay());
+        bindBtn('btn-reset-time', () => this.resetToNow());
         bindBtn('keyboard-overlay-close', () => {
             this.ui.keyboardOverlay.classList.remove('visible');
         });
@@ -796,6 +806,15 @@ export class StarlinkTracker {
             if (this.sunLight) this.sunLight.position.copy(sunVec).multiplyScalar(100);
 
             this.ui.time.innerText = date.toISOString().split('T')[1].split('.')[0] + ' UTC';
+
+            if (this.ui.localTime) {
+                this.ui.localTime.innerText = date.toLocaleTimeString([], {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                    hour12: false
+                });
+            }
         } catch (error) {
             handleError('Sun position calculation', error);
         }
@@ -1890,6 +1909,27 @@ export class StarlinkTracker {
         }
         if (this.ui.pauseIndicator) {
             this.ui.pauseIndicator.style.display = this.paused ? 'block' : 'none';
+        }
+    }
+
+    /**
+     * Snaps the simulation clock back to the actual current wall-clock time.
+     * Unpauses if paused and resets speed to 1x.
+     */
+    resetToNow() {
+        this.referenceTime = Date.now();
+        this.simStartTime = performance.now();
+
+        // Unpause if frozen
+        if (this.paused) {
+            this.paused = false;
+            if (this.ui.pauseIndicator) this.ui.pauseIndicator.style.display = 'none';
+        }
+
+        // Restore speed to real-time
+        if (this.ui.speedSlider) {
+            this.ui.speedSlider.value = 1;
+            this.ui.speedDisplay.textContent = '1';
         }
     }
 

@@ -540,6 +540,10 @@
             <div class="stat-label">Eclipsed</div>
             <div class="stat-value" id="darkCount">0</div>
         </div>
+        <div class="stat-item" style="grid-column: 1 / -1;">
+            <div class="stat-label">Local Time &mdash; <span id="localTzLabel" style="font-weight:normal;opacity:0.7;">...</span></div>
+            <div class="stat-value" id="localTime">--:--:--</div>
+        </div>
     </div>
 
     <h2>Simulation</h2>
@@ -553,6 +557,13 @@
         <label for="timeSpeed">Time Speed (x<span id="speedDisplay">1</span>)</label>
         <input type="range" id="timeSpeed" min="1" max="200" value="1">
         <div class="range-info"><span>Real</span><span>Fast</span></div>
+    </div>
+
+    <div class="control-group" style="display:flex; gap:8px; margin-top:2px;">
+        <button class="action-btn" id="btn-reset-time" aria-label="Reset simulation to current real time" style="flex:1; font-size:11px;">
+            <span class="action-btn-icon" aria-hidden="true">&#8635;</span>
+            Reset to Now
+        </button>
     </div>
 
     <div class="control-group">
@@ -673,7 +684,7 @@
 <div id="pause-indicator" style="display:none; position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); background:rgba(0,0,0,0.7); color:#fff; padding:12px 24px; border-radius:12px; font-size:18px; font-weight:600; pointer-events:none; z-index:200; letter-spacing:0.05em;">⏸ PAUSED</div>
 
 <div id="controls">
-    Drag: Rotate | Scroll: Zoom | Click: Select | H: UI | P: Pause | R: Reset | C: Cycle | ?: Shortcuts
+    Drag: Rotate | Scroll: Zoom | Click: Select | H: UI | P: Pause | N: Now | R: Reset | C: Cycle | ?: Shortcuts
 </div>
 
 <div id="error-toast" role="alert" aria-live="assertive"></div>
@@ -705,6 +716,10 @@
         <div class="shortcut-row">
             <span>Pause / Resume time</span>
             <span class="shortcut-key">P</span>
+        </div>
+        <div class="shortcut-row">
+            <span>Reset time to now</span>
+            <span class="shortcut-key">N</span>
         </div>
         <div class="shortcut-row">
             <span>Reset camera view</span>
