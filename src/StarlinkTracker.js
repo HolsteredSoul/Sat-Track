@@ -158,6 +158,8 @@ export class StarlinkTracker {
             slider: document.getElementById('growthSlider'),
             speedSlider: document.getElementById('timeSpeed'),
             speedDisplay: document.getElementById('speedDisplay'),
+            pointSizeSlider: document.getElementById('pointSize'),
+            pointSizeDisplay: document.getElementById('pointSizeDisplay'),
             loader: document.getElementById('loader-overlay'),
             loaderText: document.getElementById('loader-text'),
             progress: document.getElementById('progress-fill'),
@@ -567,6 +569,7 @@ export class StarlinkTracker {
 
         // Keyboard
         this._boundHandlers.keyDown = (e) => {
+            const inInput = e.target.closest('input');
             if (e.key === 'Escape') {
                 if (
                     this.ui.keyboardOverlay &&
@@ -577,12 +580,12 @@ export class StarlinkTracker {
                     this.resetSelection();
                 }
             }
+            if (inInput) return;
             if (e.key.toLowerCase() === 'h') toggleMenu();
             if (e.key === '?') this.toggleKeyboardOverlay();
-            if (e.key.toLowerCase() === 't' && !e.target.closest('input')) this.toggleTheme();
-            if (e.key.toLowerCase() === 'e' && !e.target.closest('input')) this.exportScreenshot();
-            if (e.key.toLowerCase() === 'g' && !e.target.closest('input'))
-                this.requestGroundStation();
+            if (e.key.toLowerCase() === 't') this.toggleTheme();
+            if (e.key.toLowerCase() === 'e') this.exportScreenshot();
+            if (e.key.toLowerCase() === 'g') this.requestGroundStation();
         };
         window.addEventListener('keydown', this._boundHandlers.keyDown);
 
@@ -591,6 +594,16 @@ export class StarlinkTracker {
             this.ui.speedDisplay.textContent = e.target.value;
         };
         this.ui.speedSlider.addEventListener('input', this._boundHandlers.speedInput);
+
+        // Point size slider
+        this._boundHandlers.pointSizeInput = (e) => {
+            const size = parseFloat(e.target.value);
+            this.ui.pointSizeDisplay.textContent = size.toFixed(1);
+            this.updateSatellitePointSize(size);
+        };
+        if (this.ui.pointSizeSlider) {
+            this.ui.pointSizeSlider.addEventListener('input', this._boundHandlers.pointSizeInput);
+        }
 
         // Online/offline
         this._boundHandlers.online = () => {
@@ -1812,6 +1825,24 @@ export class StarlinkTracker {
         this.ui.keyboardOverlay.classList.toggle('visible');
     }
 
+    /**
+     * Updates the point size for all satellite layer meshes.
+     * @param {number} size - The new point size in pixels
+     */
+    updateSatellitePointSize(size) {
+        for (const key of this.layerOrder) {
+            const mesh = this.layerMeshes[key];
+            if (mesh && mesh.material) {
+                if (key === 'iss') {
+                    mesh.material.size =
+                        size * (CONSTANTS.ISS_POINT_SIZE / CONSTANTS.POINT_SIZE_DEFAULT);
+                } else {
+                    mesh.material.size = size;
+                }
+            }
+        }
+    }
+
     // ========================================================================
     // CLEANUP
     // ========================================================================
@@ -1850,6 +1881,12 @@ export class StarlinkTracker {
         }
         if (this._boundHandlers.speedInput && this.ui.speedSlider) {
             this.ui.speedSlider.removeEventListener('input', this._boundHandlers.speedInput);
+        }
+        if (this._boundHandlers.pointSizeInput && this.ui.pointSizeSlider) {
+            this.ui.pointSizeSlider.removeEventListener(
+                'input',
+                this._boundHandlers.pointSizeInput
+            );
         }
 
         // Action buttons
