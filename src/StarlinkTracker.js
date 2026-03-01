@@ -223,7 +223,7 @@ export class StarlinkTracker {
 
         // === Raycaster Setup ===
         this.raycaster = new THREE.Raycaster();
-        this.raycaster.params.Points.threshold = CONSTANTS.RAYCAST_THRESHOLD;
+        // Threshold is overwritten dynamically in checkRaycast() based on zoom level.
         this.mouse = new THREE.Vector2();
 
         this._tmpVec = new THREE.Vector3();
@@ -1631,7 +1631,25 @@ export class StarlinkTracker {
             if (objs.length === 0) return;
 
             this.raycaster.setFromCamera(this.mouse, this.camera);
+
+            // Scale the pick threshold to match the rendered pixel size of the dots.
+            // sizeAttenuation:false means dots are drawn at a fixed number of screen
+            // pixels regardless of depth, so a fixed world-space threshold produces a
+            // wildly different screen-space hit area at different zoom levels.
+            // Formula: worldUnitsPerPixel = 2 * tan(fovY/2) * camDist / viewportHeight
+            const camDist = this.camera.position.length();
+            const fovY = THREE.MathUtils.degToRad(this.camera.fov);
+            const vh = this.renderer.domElement.clientHeight || window.innerHeight;
+            const worldPerPx = (2 * Math.tan(fovY / 2) * camDist) / vh;
+            // Allow a small extra-pixel buffer so the cursor doesn't have to be
+            // perfectly centred on the dot.
+            this.raycaster.params.Points.threshold = (this.pointSize + 2) * worldPerPx;
+
             const hits = this.raycaster.intersectObjects(objs);
+
+            // Three.js sorts hits by camera distance; sort by distanceToRay instead
+            // so the dot geometrically closest to the cursor wins.
+            if (hits.length > 1) hits.sort((a, b) => a.distanceToRay - b.distanceToRay);
 
             if (hits.length > 0) {
                 const h = hits[0];

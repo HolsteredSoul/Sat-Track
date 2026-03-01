@@ -60,9 +60,6 @@ export const CONSTANTS = {
     AUTO_ROTATE_SPEED: 0.5,
     DAMPING_FACTOR: 0.05,
 
-    // === Raycasting ===
-    RAYCAST_THRESHOLD: 0.9,
-
     // === Search & UI ===
     SEARCH_DEBOUNCE_MS: 150,
     SEARCH_MIN_CHARS: 2,
