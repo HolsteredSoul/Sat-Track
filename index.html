@@ -313,7 +313,7 @@
             height: 10px;
             border-radius: 50%;
             vertical-align: middle;
-            border: 1px solid rgba(255, 255, 255, 0.15);
+            border: 1px solid var(--ui-border);
         }
 
         #offline-banner {
@@ -474,6 +474,18 @@
             background: rgba(51, 170, 255, 0.15);
         }
 
+        /* === Light theme overrides for hardcoded elements === */
+        body.light-theme #tooltip {
+            background: rgba(245, 245, 250, 0.95);
+            border-color: rgba(0, 0, 0, 0.12);
+            color: var(--ui-text);
+        }
+        body.light-theme #keyboard-overlay {
+            background: rgba(255, 255, 255, 0.85);
+        }
+        body.light-theme .source-badge { color: #fff; }
+        body.light-theme .source-badge.cached { color: #fff; }
+
         @media (max-width: 768px) {
             #ui-container {
                 width: calc(100% - 40px);
@@ -491,14 +503,14 @@
 </head>
 <body>
 
-<div id="offline-banner">Offline - Using cached/simulated data</div>
+<div id="offline-banner" role="alert">Offline - Using cached/simulated data</div>
 
-<div id="loader-overlay">
+<div id="loader-overlay" aria-live="polite">
     <div id="loader-text">Loading orbital data...</div>
     <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
 </div>
 
-<div id="ui-toggle">&#10005;</div>
+<button id="ui-toggle" aria-label="Toggle UI panel">&#10005;</button>
 
 <div id="ui-container">
     <h1>
@@ -623,26 +635,26 @@
 
     <h2>Tools</h2>
     <div class="action-buttons">
-        <button class="action-btn" id="btn-location">
-            <span class="action-btn-icon">&#128205;</span>
+        <button class="action-btn" id="btn-location" aria-label="Set observer location">
+            <span class="action-btn-icon" aria-hidden="true">&#128205;</span>
             Location
         </button>
-        <button class="action-btn" id="btn-export">
-            <span class="action-btn-icon">&#128247;</span>
+        <button class="action-btn" id="btn-export" aria-label="Export screenshot">
+            <span class="action-btn-icon" aria-hidden="true">&#128247;</span>
             Export
         </button>
-        <button class="action-btn" id="btn-theme">
-            <span class="action-btn-icon">&#9681;</span>
+        <button class="action-btn" id="btn-theme" aria-label="Toggle light/dark theme">
+            <span class="action-btn-icon" aria-hidden="true">&#9681;</span>
             Theme
         </button>
-        <button class="action-btn" id="btn-keyboard">
-            <span class="action-btn-icon">&#9000;</span>
+        <button class="action-btn" id="btn-keyboard" aria-label="Show keyboard shortcuts">
+            <span class="action-btn-icon" aria-hidden="true">&#9000;</span>
             Keys
         </button>
     </div>
 </div>
 
-<div id="tooltip">
+<div id="tooltip" role="tooltip">
     <div class="tooltip-header" id="tooltip-name">--</div>
     <div class="tooltip-row" id="tooltip-layer">Layer: --</div>
     <div class="tooltip-row" id="tooltip-id">ID: --</div>
@@ -656,10 +668,10 @@
     Drag: Rotate | Scroll/Pinch: Zoom | Click: Select | H: Toggle UI | ?: Shortcuts
 </div>
 
-<div id="error-toast"></div>
+<div id="error-toast" role="alert" aria-live="assertive"></div>
 
 <!-- Keyboard Shortcuts Overlay -->
-<div id="keyboard-overlay">
+<div id="keyboard-overlay" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts">
     <div class="keyboard-content">
         <h2>Keyboard Shortcuts</h2>
         <div class="shortcut-row">

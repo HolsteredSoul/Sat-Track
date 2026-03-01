@@ -23,7 +23,7 @@ export function sanitizeHTML(str) {
         '`': '&#x60;',
         '=': '&#x3D;'
     };
-    return str.replace(/[&<>"'`=/]/g, char => escapeMap[char]);
+    return str.replace(/[&<>"'`=/]/g, (char) => escapeMap[char]);
 }
 
 /**
@@ -65,7 +65,10 @@ export function validateTLELine(line, lineNumber) {
 
     const computedChecksum = sum % 10;
     if (computedChecksum !== expectedChecksum) {
-        return { valid: false, error: `Checksum mismatch: computed ${computedChecksum}, expected ${expectedChecksum}` };
+        return {
+            valid: false,
+            error: `Checksum mismatch: computed ${computedChecksum}, expected ${expectedChecksum}`
+        };
     }
 
     return { valid: true };
@@ -121,12 +124,12 @@ export function computeShadowFactorKm(xKm, yKm, zKm, sunDir) {
     const D = CONSTANTS.SUN_DISTANCE_KM;
 
     // Umbra and penumbra cone radii at satellite distance
-    let rUmbra = Re - xBehind * (Rs - Re) / D;
+    let rUmbra = Re - (xBehind * (Rs - Re)) / D;
     if (rUmbra < 0) rUmbra = 0;
-    const rPen = Re + xBehind * (Rs + Re) / D;
+    const rPen = Re + (xBehind * (Rs + Re)) / D;
 
-    if (dKm <= rUmbra) return 1;  // Full umbra
-    if (dKm >= rPen) return 0;    // Fully sunlit
+    if (dKm <= rUmbra) return 1; // Full umbra
+    if (dKm >= rPen) return 0; // Fully sunlit
 
     // Smoothstep transition through penumbra
     const t = (dKm - rUmbra) / (rPen - rUmbra);
@@ -142,7 +145,7 @@ export function computeShadowFactorKm(xKm, yKm, zKm, sunDir) {
  * @returns {{ x: number, y: number, z: number }} Normalized sun direction in scene coordinates
  */
 export function calculateSunDirection(date, gstimeFn) {
-    const JD = (date.getTime() / 86400000.0) + 2440587.5;
+    const JD = date.getTime() / 86400000.0 + 2440587.5;
     const T = (JD - 2451545.0) / 36525.0;
 
     const L0 = (280.46646 + 36000.76983 * T + 0.0003032 * T * T) % 360;
@@ -151,19 +154,17 @@ export function calculateSunDirection(date, gstimeFn) {
     const rad = Math.PI / 180;
     const Mrad = M * rad;
 
-    const C = (1.914602 - 0.004817 * T - 0.000014 * T * T) * Math.sin(Mrad)
-            + (0.019993 - 0.000101 * T) * Math.sin(2 * Mrad)
-            + 0.000289 * Math.sin(3 * Mrad);
+    const C =
+        (1.914602 - 0.004817 * T - 0.000014 * T * T) * Math.sin(Mrad) +
+        (0.019993 - 0.000101 * T) * Math.sin(2 * Mrad) +
+        0.000289 * Math.sin(3 * Mrad);
 
     const sunLon = (L0 + C) % 360;
     const epsilon = 23.439291 - 0.0130042 * T - 0.00000016 * T * T;
     const epsilonRad = epsilon * rad;
     const lambdaRad = sunLon * rad;
 
-    const RA = Math.atan2(
-        Math.cos(epsilonRad) * Math.sin(lambdaRad),
-        Math.cos(lambdaRad)
-    );
+    const RA = Math.atan2(Math.cos(epsilonRad) * Math.sin(lambdaRad), Math.cos(lambdaRad));
     const Dec = Math.asin(Math.sin(epsilonRad) * Math.sin(lambdaRad));
 
     const GMST = gstimeFn(date);
@@ -200,8 +201,12 @@ export class SimulatedOrbit {
         this.meanMotion = Math.sqrt(CONSTANTS.GRAVITATIONAL_PARAM / Math.pow(r, 3));
 
         const a = r;
-        this.raanRate = -1.5 * this.meanMotion * CONSTANTS.J2_PERTURBATION *
-                        Math.pow(CONSTANTS.EARTH_RADIUS_KM / a, 2) * Math.cos(this.inc);
+        this.raanRate =
+            -1.5 *
+            this.meanMotion *
+            CONSTANTS.J2_PERTURBATION *
+            Math.pow(CONSTANTS.EARTH_RADIUS_KM / a, 2) *
+            Math.cos(this.inc);
 
         this.epoch = Date.now() / 1000;
     }
@@ -213,8 +218,8 @@ export class SimulatedOrbit {
      */
     getPos(date) {
         const t = date.getTime() / 1000 - this.epoch;
-        const curAnomaly = this.anomaly0 + (this.meanMotion * t);
-        const curRaan = this.raan0 + (this.raanRate * t);
+        const curAnomaly = this.anomaly0 + this.meanMotion * t;
+        const curRaan = this.raan0 + this.raanRate * t;
         const r = (CONSTANTS.EARTH_RADIUS_KM + this.alt) * CONSTANTS.RENDER_SCALE;
 
         const x = r * Math.cos(curAnomaly);

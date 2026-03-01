@@ -5,7 +5,6 @@
 
 import { CONSTANTS } from './constants.js';
 import {
-    sanitizeHTML,
     computeShadowFactorKm,
     calculateSunDirection,
     SimulatedOrbit,
@@ -29,10 +28,18 @@ export class StarlinkTracker {
         this.isMobile = isMobileDevice();
 
         // === Effective constants (adjusted for mobile) ===
-        this.effectiveStarCount = this.isMobile ? CONSTANTS.MOBILE_STAR_COUNT : CONSTANTS.STAR_COUNT;
-        this.effectivePhysicsHz = this.isMobile ? CONSTANTS.MOBILE_PHYSICS_HZ : CONSTANTS.PHYSICS_HZ;
-        this.effectiveRaycastHz = this.isMobile ? CONSTANTS.MOBILE_RAYCAST_HZ : CONSTANTS.RAYCAST_HZ;
-        this.effectiveOrbitPoints = this.isMobile ? CONSTANTS.MOBILE_ORBIT_POINTS : CONSTANTS.ORBIT_POINTS;
+        this.effectiveStarCount = this.isMobile
+            ? CONSTANTS.MOBILE_STAR_COUNT
+            : CONSTANTS.STAR_COUNT;
+        this.effectivePhysicsHz = this.isMobile
+            ? CONSTANTS.MOBILE_PHYSICS_HZ
+            : CONSTANTS.PHYSICS_HZ;
+        this.effectiveRaycastHz = this.isMobile
+            ? CONSTANTS.MOBILE_RAYCAST_HZ
+            : CONSTANTS.RAYCAST_HZ;
+        this.effectiveOrbitPoints = this.isMobile
+            ? CONSTANTS.MOBILE_ORBIT_POINTS
+            : CONSTANTS.ORBIT_POINTS;
 
         // === Configuration ===
         this.config = {
@@ -45,16 +52,65 @@ export class StarlinkTracker {
         };
 
         // === Layer Configuration ===
-        this.layerOrder = ['starlink', 'iss', 'gps', 'galileo', 'oneweb', 'iridium', 'glonass', 'beidou'];
+        this.layerOrder = [
+            'starlink',
+            'iss',
+            'gps',
+            'galileo',
+            'oneweb',
+            'iridium',
+            'glonass',
+            'beidou'
+        ];
         this.layers = {
-            starlink: { label: 'Starlink', color: new THREE.Color(1, 1, 1), enabled: true, source: 'loading' },
-            iss: { label: 'ISS', color: new THREE.Color(1.0, 0.82, 0.4), enabled: true, source: 'loading' },
-            gps: { label: 'GPS', color: new THREE.Color(0.15, 0.95, 0.65), enabled: true, source: 'loading' },
-            galileo: { label: 'Galileo', color: new THREE.Color(0.55, 0.60, 0.70), enabled: true, source: 'loading' },
-            oneweb: { label: 'OneWeb', color: new THREE.Color(0.93, 0.28, 0.44), enabled: true, source: 'loading' },
-            iridium: { label: 'Iridium', color: new THREE.Color(0.6, 0.4, 1.0), enabled: true, source: 'loading' },
-            glonass: { label: 'GLONASS', color: new THREE.Color(1.0, 0.5, 0.2), enabled: true, source: 'loading' },
-            beidou: { label: 'BeiDou', color: new THREE.Color(0.9, 0.85, 0.2), enabled: true, source: 'loading' }
+            starlink: {
+                label: 'Starlink',
+                color: new THREE.Color(1, 1, 1),
+                enabled: true,
+                source: 'loading'
+            },
+            iss: {
+                label: 'ISS',
+                color: new THREE.Color(1.0, 0.82, 0.4),
+                enabled: true,
+                source: 'loading'
+            },
+            gps: {
+                label: 'GPS',
+                color: new THREE.Color(0.15, 0.95, 0.65),
+                enabled: true,
+                source: 'loading'
+            },
+            galileo: {
+                label: 'Galileo',
+                color: new THREE.Color(0.55, 0.6, 0.7),
+                enabled: true,
+                source: 'loading'
+            },
+            oneweb: {
+                label: 'OneWeb',
+                color: new THREE.Color(0.93, 0.28, 0.44),
+                enabled: true,
+                source: 'loading'
+            },
+            iridium: {
+                label: 'Iridium',
+                color: new THREE.Color(0.6, 0.4, 1.0),
+                enabled: true,
+                source: 'loading'
+            },
+            glonass: {
+                label: 'GLONASS',
+                color: new THREE.Color(1.0, 0.5, 0.2),
+                enabled: true,
+                source: 'loading'
+            },
+            beidou: {
+                label: 'BeiDou',
+                color: new THREE.Color(0.9, 0.85, 0.2),
+                enabled: true,
+                source: 'loading'
+            }
         };
 
         // === State Variables ===
@@ -64,6 +120,7 @@ export class StarlinkTracker {
         this.lastPhysicsUpdate = 0;
         this.lastRaycastUpdate = 0;
         this.sunPosition = new THREE.Vector3();
+        this.currentSimDate = null;
         this.mouseMoved = false;
         this.isInitialized = false;
         this.isDisposed = false;
@@ -203,7 +260,8 @@ export class StarlinkTracker {
         this.renderer = new THREE.WebGLRenderer({
             antialias: !this.isMobile,
             alpha: false,
-            powerPreference: 'high-performance'
+            powerPreference: 'high-performance',
+            preserveDrawingBuffer: true
         });
         this.renderer.setSize(window.innerWidth, window.innerHeight);
         this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.isMobile ? 1.5 : 2));
@@ -281,7 +339,8 @@ export class StarlinkTracker {
 
         const geometry = new THREE.SphereGeometry(
             CONSTANTS.EARTH_RADIUS_KM * CONSTANTS.RENDER_SCALE,
-            64, 64
+            64,
+            64
         );
         this.earthGroup = new THREE.Mesh(geometry, this.earthMat);
         this.earthGroup.rotation.y = -Math.PI / 2;
@@ -292,7 +351,8 @@ export class StarlinkTracker {
         // Atmosphere shell
         const atmoGeo = new THREE.SphereGeometry(
             CONSTANTS.EARTH_RADIUS_KM * CONSTANTS.RENDER_SCALE * CONSTANTS.ATMOSPHERE_SCALE,
-            64, 64
+            64,
+            64
         );
         this.atmoMat = new THREE.ShaderMaterial({
             uniforms: {
@@ -366,9 +426,10 @@ export class StarlinkTracker {
      */
     setupOrbitVisualizer() {
         const geo = new THREE.BufferGeometry();
-        geo.setAttribute('position', new THREE.BufferAttribute(
-            new Float32Array(this.effectiveOrbitPoints * 3), 3
-        ));
+        geo.setAttribute(
+            'position',
+            new THREE.BufferAttribute(new Float32Array(this.effectiveOrbitPoints * 3), 3)
+        );
         const mat = new THREE.LineBasicMaterial({
             color: 0x33aaff,
             opacity: 0.8,
@@ -428,8 +489,8 @@ export class StarlinkTracker {
             this.mouseMoved = true;
             const tip = this.ui.tooltip;
             if (tip.style.display === 'block') {
-                tip.style.left = (e.clientX + 20) + 'px';
-                tip.style.top = (e.clientY + 20) + 'px';
+                tip.style.left = e.clientX + 20 + 'px';
+                tip.style.top = e.clientY + 20 + 'px';
             }
         };
         window.addEventListener('mousemove', this._boundHandlers.mouseMove);
@@ -438,13 +499,13 @@ export class StarlinkTracker {
         const toggleMenu = () => {
             this.ui.container.classList.toggle('hidden');
             const isHidden = this.ui.container.classList.contains('hidden');
-            this.ui.toggleBtn.innerHTML = isHidden ? '&#9776;' : '&#10005;';
+            this.ui.toggleBtn.textContent = isHidden ? '\u2630' : '\u2715';
         };
         this._boundHandlers.toggleClick = toggleMenu;
         this.ui.toggleBtn.addEventListener('click', this._boundHandlers.toggleClick);
 
         // Layer toggles
-        this.layerOrder.forEach(key => {
+        this.layerOrder.forEach((key) => {
             const el = this.ui.layers[key];
             if (!el) return;
             const handler = () => {
@@ -480,14 +541,22 @@ export class StarlinkTracker {
         let searchTimeout = null;
         this._boundHandlers.searchInput = (e) => {
             clearTimeout(searchTimeout);
-            searchTimeout = setTimeout(() => this.performSearch(e.target.value), CONSTANTS.SEARCH_DEBOUNCE_MS);
+            searchTimeout = setTimeout(
+                () => this.performSearch(e.target.value),
+                CONSTANTS.SEARCH_DEBOUNCE_MS
+            );
         };
         this.ui.searchBox.addEventListener('input', this._boundHandlers.searchInput);
 
         // Window click for selection
         this._boundHandlers.windowClick = (e) => {
-            if (e.target.closest('#ui-container') || e.target.closest('#ui-toggle') ||
-                e.target.closest('#controls') || e.target.closest('#keyboard-overlay')) return;
+            if (
+                e.target.closest('#ui-container') ||
+                e.target.closest('#ui-toggle') ||
+                e.target.closest('#controls') ||
+                e.target.closest('#keyboard-overlay')
+            )
+                return;
             if (this.hovered) {
                 this.selectSatellite(this.hovered.layer, this.hovered.index);
             } else if (this.selected) {
@@ -499,7 +568,10 @@ export class StarlinkTracker {
         // Keyboard
         this._boundHandlers.keyDown = (e) => {
             if (e.key === 'Escape') {
-                if (this.ui.keyboardOverlay && this.ui.keyboardOverlay.classList.contains('visible')) {
+                if (
+                    this.ui.keyboardOverlay &&
+                    this.ui.keyboardOverlay.classList.contains('visible')
+                ) {
                     this.ui.keyboardOverlay.classList.remove('visible');
                 } else {
                     this.resetSelection();
@@ -509,7 +581,8 @@ export class StarlinkTracker {
             if (e.key === '?') this.toggleKeyboardOverlay();
             if (e.key.toLowerCase() === 't' && !e.target.closest('input')) this.toggleTheme();
             if (e.key.toLowerCase() === 'e' && !e.target.closest('input')) this.exportScreenshot();
-            if (e.key.toLowerCase() === 'g' && !e.target.closest('input')) this.requestGroundStation();
+            if (e.key.toLowerCase() === 'g' && !e.target.closest('input'))
+                this.requestGroundStation();
         };
         window.addEventListener('keydown', this._boundHandlers.keyDown);
 
@@ -534,21 +607,20 @@ export class StarlinkTracker {
             this.ui.offlineBanner.style.display = 'block';
         }
 
-        // Action buttons
-        const btnExport = document.getElementById('btn-export');
-        if (btnExport) btnExport.addEventListener('click', () => this.exportScreenshot());
-
-        const btnLocation = document.getElementById('btn-location');
-        if (btnLocation) btnLocation.addEventListener('click', () => this.requestGroundStation());
-
-        const btnTheme = document.getElementById('btn-theme');
-        if (btnTheme) btnTheme.addEventListener('click', () => this.toggleTheme());
-
-        const btnKeyboard = document.getElementById('btn-keyboard');
-        if (btnKeyboard) btnKeyboard.addEventListener('click', () => this.toggleKeyboardOverlay());
-
-        const overlayClose = document.getElementById('keyboard-overlay-close');
-        if (overlayClose) overlayClose.addEventListener('click', () => {
+        // Action buttons (store references for cleanup)
+        this._actionButtons = [];
+        const bindBtn = (id, handler) => {
+            const el = document.getElementById(id);
+            if (el) {
+                el.addEventListener('click', handler);
+                this._actionButtons.push({ el, handler });
+            }
+        };
+        bindBtn('btn-export', () => this.exportScreenshot());
+        bindBtn('btn-location', () => this.requestGroundStation());
+        bindBtn('btn-theme', () => this.toggleTheme());
+        bindBtn('btn-keyboard', () => this.toggleKeyboardOverlay());
+        bindBtn('keyboard-overlay-close', () => {
             this.ui.keyboardOverlay.classList.remove('visible');
         });
     }
@@ -569,13 +641,13 @@ export class StarlinkTracker {
 
         try {
             const matches = this.allSatIndex
-                .filter(item => item.name && item.name.toLowerCase().includes(val))
+                .filter((item) => item.name && item.name.toLowerCase().includes(val))
                 .slice(0, CONSTANTS.SEARCH_MAX_RESULTS);
 
-            matches.forEach(m => {
+            matches.forEach((m) => {
                 const div = document.createElement('div');
                 div.className = 'search-item';
-                div.textContent = `${sanitizeHTML(m.name)}  [${this.layers[m.layer].label}]`;
+                div.textContent = `${m.name}  [${this.layers[m.layer].label}]`;
                 div.dataset.layer = m.layer;
                 div.dataset.index = m.index;
                 results.appendChild(div);
@@ -770,10 +842,13 @@ export class StarlinkTracker {
 
         if (result && result.text) {
             try {
-                localStorage.setItem(cacheKey, JSON.stringify({
-                    data: result.text,
-                    timestamp: Date.now()
-                }));
+                localStorage.setItem(
+                    cacheKey,
+                    JSON.stringify({
+                        data: result.text,
+                        timestamp: Date.now()
+                    })
+                );
             } catch (e) {
                 handleError('Cache write', e);
             }
@@ -912,7 +987,10 @@ export class StarlinkTracker {
      */
     processTLEForLayer(data, layerKey, sourceLabel) {
         try {
-            const lines = data.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+            const lines = data
+                .split('\n')
+                .map((l) => l.trim())
+                .filter((l) => l.length > 0);
             const satData = [];
             const satNames = [];
             let skippedCount = 0;
@@ -966,7 +1044,11 @@ export class StarlinkTracker {
             }
 
             // Mobile: cap satellite count
-            if (this.isMobile && layerKey === 'starlink' && satData.length > CONSTANTS.MOBILE_MAX_SATELLITES) {
+            if (
+                this.isMobile &&
+                layerKey === 'starlink' &&
+                satData.length > CONSTANTS.MOBILE_MAX_SATELLITES
+            ) {
                 satData.length = CONSTANTS.MOBILE_MAX_SATELLITES;
                 satNames.length = CONSTANTS.MOBILE_MAX_SATELLITES;
             }
@@ -989,7 +1071,7 @@ export class StarlinkTracker {
         const satNames = [];
         let id = 0;
 
-        shells.forEach(shell => {
+        shells.forEach((shell) => {
             const planes = Math.max(1, Math.round(Math.sqrt(shell.count)));
             const perPlane = Math.ceil(shell.count / planes);
             for (let p = 0; p < planes; p++) {
@@ -1025,7 +1107,7 @@ export class StarlinkTracker {
             if (this.primarySatrec && !this.primarySatrec.isSimulated) {
                 const sat = this.primarySatrec;
                 const currentYear = new Date().getFullYear() % 100;
-                const century = (sat.epochyr > currentYear + 30) ? 1900 : 2000;
+                const century = sat.epochyr > currentYear + 30 ? 1900 : 2000;
                 const year = century + sat.epochyr;
                 const jan1 = Date.UTC(year, 0, 1);
                 const msOffset = (sat.epochdays - 1) * 24 * 60 * 60 * 1000;
@@ -1054,8 +1136,12 @@ export class StarlinkTracker {
      * Refreshes all TLE data from remote sources.
      */
     async refreshData() {
-        this.layerOrder.forEach(key => {
-            try { localStorage.removeItem(`tle_cache_${key}`); } catch (e) { /* ignore */ }
+        this.layerOrder.forEach((key) => {
+            try {
+                localStorage.removeItem(`tle_cache_${key}`);
+            } catch (e) {
+                /* ignore */
+            }
         });
 
         this.updateStatus('Refreshing data...', 'status-warn');
@@ -1086,7 +1172,7 @@ export class StarlinkTracker {
      * Creates Three.js point meshes for all satellite layers.
      */
     createLayerMeshes() {
-        Object.keys(this.layerMeshes).forEach(key => {
+        Object.keys(this.layerMeshes).forEach((key) => {
             const m = this.layerMeshes[key];
             if (!m) return;
             this.scene.remove(m);
@@ -1095,7 +1181,7 @@ export class StarlinkTracker {
         });
         this.layerMeshes = {};
 
-        this.layerOrder.forEach(layerKey => {
+        this.layerOrder.forEach((layerKey) => {
             const layer = this.layerData[layerKey];
             if (!layer) {
                 this.layerData[layerKey] = { satData: [], satNames: [] };
@@ -1139,7 +1225,7 @@ export class StarlinkTracker {
      */
     rebuildSearchIndex() {
         this.allSatIndex = [];
-        this.layerOrder.forEach(layerKey => {
+        this.layerOrder.forEach((layerKey) => {
             const names = (this.layerData[layerKey] && this.layerData[layerKey].satNames) || [];
             for (let i = 0; i < names.length; i++) {
                 this.allSatIndex.push({ name: names[i], layer: layerKey, index: i });
@@ -1166,6 +1252,7 @@ export class StarlinkTracker {
             const timeSpeed = parseFloat(this.ui.speedSlider.value);
             const elapsed = (now - this.simStartTime) * timeSpeed;
             const simDate = new Date(this.referenceTime + elapsed);
+            this.currentSimDate = simDate;
 
             this.calculateSunPosition(simDate);
 
@@ -1179,7 +1266,8 @@ export class StarlinkTracker {
             }
 
             let totalActive = 0;
-            let lit = 0, dark = 0;
+            let lit = 0,
+                dark = 0;
             let issPosition = null;
             let issShadow = 0;
 
@@ -1188,8 +1276,9 @@ export class StarlinkTracker {
                 const layer = this.layerData[layerKey];
                 if (!mesh || !layer) continue;
 
-                const enabled = !!this.layers[layerKey].enabled &&
-                              (!this.ui.layers[layerKey] || this.ui.layers[layerKey].checked);
+                const enabled =
+                    !!this.layers[layerKey].enabled &&
+                    (!this.ui.layers[layerKey] || this.ui.layers[layerKey].checked);
                 mesh.visible = enabled;
                 if (!enabled) continue;
 
@@ -1213,14 +1302,20 @@ export class StarlinkTracker {
 
                     if (sat.isSimulated) {
                         const pos = sat.getPos(simDate);
-                        x = pos.x; y = pos.y; z = pos.z;
+                        x = pos.x;
+                        y = pos.y;
+                        z = pos.z;
                     } else {
                         try {
                             const pv = satellite.propagate(sat, simDate);
                             if (pv.position && !isNaN(pv.position.x)) {
-                                vX = pv.velocity.x; vY = pv.velocity.y; vZ = pv.velocity.z;
+                                vX = pv.velocity.x;
+                                vY = pv.velocity.y;
+                                vZ = pv.velocity.z;
                                 const gd = satellite.eciToGeodetic(pv.position, gmst);
-                                const alt = (CONSTANTS.EARTH_RADIUS_KM + gd.height) * CONSTANTS.RENDER_SCALE;
+                                const alt =
+                                    (CONSTANTS.EARTH_RADIUS_KM + gd.height) *
+                                    CONSTANTS.RENDER_SCALE;
                                 const phi = gd.latitude;
                                 const theta = gd.longitude;
                                 x = alt * Math.cos(phi) * Math.cos(theta);
@@ -1247,38 +1342,43 @@ export class StarlinkTracker {
                     else lit++;
 
                     const satName = layer.satNames[i] || '';
-                    const isISS = layerKey === 'iss' &&
-                                 (satName.toUpperCase().includes('ISS (ZARYA)') ||
-                                  satName.toUpperCase() === 'ISS' ||
-                                  satName.toUpperCase().includes('ISS ('));
+                    const isISS =
+                        layerKey === 'iss' &&
+                        (satName.toUpperCase().includes('ISS (ZARYA)') ||
+                            satName.toUpperCase() === 'ISS' ||
+                            satName.toUpperCase().includes('ISS ('));
 
                     if (isISS) {
                         issPosition = { x, y, z };
                         issShadow = shadow;
                     }
 
-                    const isSelected = this.selected &&
-                                      this.selected.layer === layerKey &&
-                                      this.selected.index === i;
-                    const isHovered = this.hovered &&
-                                     this.hovered.layer === layerKey &&
-                                     this.hovered.index === i;
+                    const isSelected =
+                        this.selected &&
+                        this.selected.layer === layerKey &&
+                        this.selected.index === i;
+                    const isHovered =
+                        this.hovered && this.hovered.layer === layerKey && this.hovered.index === i;
 
                     if (isSelected) {
                         colors.setXYZ(i, 0, 1, 0);
                         this.updateTooltip(
-                            layerKey, i,
+                            layerKey,
+                            i,
                             Math.sqrt(xKm * xKm + yKm * yKm + zKm * zKm),
-                            (vX !== undefined) ? Math.sqrt(vX * vX + vY * vY + vZ * vZ) : 0,
-                            shadow, true
+                            vX !== undefined ? Math.sqrt(vX * vX + vY * vY + vZ * vZ) : 0,
+                            shadow,
+                            true
                         );
                     } else if (isHovered) {
                         colors.setXYZ(i, 0, 1, 1);
                         this.updateTooltip(
-                            layerKey, i,
+                            layerKey,
+                            i,
                             Math.sqrt(xKm * xKm + yKm * yKm + zKm * zKm),
-                            (vX !== undefined) ? Math.sqrt(vX * vX + vY * vY + vZ * vZ) : 0,
-                            shadow, false
+                            vX !== undefined ? Math.sqrt(vX * vX + vY * vY + vZ * vZ) : 0,
+                            shadow,
+                            false
                         );
                     } else {
                         const t = Math.pow(shadow, CONSTANTS.SHADOW_COLOR_EXPONENT);
@@ -1304,7 +1404,7 @@ export class StarlinkTracker {
             if (this.issSprite && issPosition && this.layers.iss.enabled) {
                 this.issSprite.position.set(issPosition.x, issPosition.y, issPosition.z);
                 this.issSprite.visible = true;
-                this.issSprite.material.opacity = 1 - (issShadow * 0.7);
+                this.issSprite.material.opacity = 1 - issShadow * 0.7;
             } else if (this.issSprite) {
                 this.issSprite.visible = false;
             }
@@ -1342,25 +1442,30 @@ export class StarlinkTracker {
             let validPts = 0;
 
             for (let i = 0; i < steps; i++) {
-                const future = new Date(startDate.getTime() + (i * (durationMins / steps) * 60000));
+                const future = new Date(startDate.getTime() + i * (durationMins / steps) * 60000);
                 let x, y, z;
 
                 try {
                     if (sat.isSimulated) {
                         const p = sat.getPos(future);
-                        x = p.x; y = p.y; z = p.z;
+                        x = p.x;
+                        y = p.y;
+                        z = p.z;
                     } else {
                         const pv = satellite.propagate(sat, future);
                         if (pv.position && !isNaN(pv.position.x)) {
                             const gmst = satellite.gstime(future);
                             const gd = satellite.eciToGeodetic(pv.position, gmst);
-                            const alt = (CONSTANTS.EARTH_RADIUS_KM + gd.height) * CONSTANTS.RENDER_SCALE;
+                            const alt =
+                                (CONSTANTS.EARTH_RADIUS_KM + gd.height) * CONSTANTS.RENDER_SCALE;
                             x = alt * Math.cos(gd.latitude) * Math.cos(gd.longitude);
                             y = alt * Math.sin(gd.latitude);
                             z = -alt * Math.cos(gd.latitude) * Math.sin(gd.longitude);
                         }
                     }
-                } catch (e) { /* skip point */ }
+                } catch (e) {
+                    /* skip point */
+                }
 
                 if (x !== undefined && !isNaN(x)) {
                     posArr[validPts * 3] = x;
@@ -1388,8 +1493,7 @@ export class StarlinkTracker {
      * @param {boolean} isLocked - Whether satellite is selected
      */
     updateTooltip(layerKey, idx, distKm, vel, shadow, isLocked) {
-        const rawName = (this.layerData[layerKey].satNames[idx]) || 'Unknown Object';
-        const safeName = sanitizeHTML(rawName);
+        const rawName = this.layerData[layerKey].satNames[idx] || 'Unknown Object';
         const alt = distKm - CONSTANTS.EARTH_RADIUS_KM;
         const velFmt = vel > 0 ? vel.toFixed(2) + ' km/s' : 'N/A';
 
@@ -1399,7 +1503,7 @@ export class StarlinkTracker {
 
         this.ui.tooltip.style.display = 'block';
         const els = this.ui.tooltipElements;
-        els.name.textContent = safeName;
+        els.name.textContent = rawName;
         els.layer.textContent = `Layer: ${this.layers[layerKey].label}`;
         els.id.textContent = `ID: ${idx}`;
         els.alt.textContent = `Alt: ${alt.toFixed(1)} km`;
@@ -1435,14 +1539,14 @@ export class StarlinkTracker {
         if (!this.mouseMoved || !this.isInitialized) return;
 
         const now = performance.now();
-        if (now - this.lastRaycastUpdate < (1000 / this.effectiveRaycastHz)) return;
+        if (now - this.lastRaycastUpdate < 1000 / this.effectiveRaycastHz) return;
         this.lastRaycastUpdate = now;
         this.mouseMoved = false;
 
         try {
             const objs = this.layerOrder
-                .map(k => this.layerMeshes[k])
-                .filter(m => m && m.visible);
+                .map((k) => this.layerMeshes[k])
+                .filter((m) => m && m.visible);
 
             if (this.issSprite && this.issSprite.visible) {
                 objs.push(this.issSprite);
@@ -1463,7 +1567,11 @@ export class StarlinkTracker {
                 } else {
                     const layerKey = h.object.userData.layerKey;
                     const idx = h.index;
-                    if (!this.hovered || this.hovered.layer !== layerKey || this.hovered.index !== idx) {
+                    if (
+                        !this.hovered ||
+                        this.hovered.layer !== layerKey ||
+                        this.hovered.index !== idx
+                    ) {
                         this.hovered = { layer: layerKey, index: idx };
                         document.body.style.cursor = 'pointer';
                         this.ui.tooltip.style.display = 'block';
@@ -1501,7 +1609,10 @@ export class StarlinkTracker {
                     lon: position.coords.longitude
                 };
                 this.setupGroundStationMarker();
-                this.updateStatus(`Observer: ${this.observerLocation.lat.toFixed(2)}, ${this.observerLocation.lon.toFixed(2)}`, 'status-ok');
+                this.updateStatus(
+                    `Observer: ${this.observerLocation.lat.toFixed(2)}, ${this.observerLocation.lon.toFixed(2)}`,
+                    'status-ok'
+                );
             },
             (error) => {
                 handleError('Geolocation', error, true);
@@ -1531,7 +1642,11 @@ export class StarlinkTracker {
         const lineGeo = new THREE.BufferGeometry();
         const linePos = new Float32Array(6); // 2 points
         lineGeo.setAttribute('position', new THREE.BufferAttribute(linePos, 3));
-        const lineMat = new THREE.LineBasicMaterial({ color: 0xff4444, opacity: 0.8, transparent: true });
+        const lineMat = new THREE.LineBasicMaterial({
+            color: 0xff4444,
+            opacity: 0.8,
+            transparent: true
+        });
         this.groundStationLine = new THREE.Line(lineGeo, lineMat);
         this.scene.add(this.groundStationLine);
         this._disposables.push(lineGeo);
@@ -1539,7 +1654,7 @@ export class StarlinkTracker {
     }
 
     /**
-     * Updates ground station marker position based on Earth's rotation.
+     * Updates ground station marker position accounting for Earth's rotation.
      * @param {Date} simDate - Current simulation date
      */
     updateGroundStationMarker(simDate) {
@@ -1547,19 +1662,25 @@ export class StarlinkTracker {
 
         const lat = this.observerLocation.lat * (Math.PI / 180);
         const lon = this.observerLocation.lon * (Math.PI / 180);
+        const gmst = satellite.gstime(simDate);
+        const gd = { latitude: lat, longitude: lon - gmst, height: 0 };
         const alt = CONSTANTS.EARTH_RADIUS_KM * CONSTANTS.RENDER_SCALE;
 
-        const x = alt * Math.cos(lat) * Math.cos(lon);
-        const y = alt * Math.sin(lat);
-        const z = -alt * Math.cos(lat) * Math.sin(lon);
+        const x = alt * Math.cos(gd.latitude) * Math.cos(gd.longitude);
+        const y = alt * Math.sin(gd.latitude);
+        const z = -alt * Math.cos(gd.latitude) * Math.sin(gd.longitude);
 
         this.groundStationMarker.position.set(x, y, z);
 
         if (this.groundStationLine) {
             const spike = 1.05;
             const posArr = this.groundStationLine.geometry.attributes.position.array;
-            posArr[0] = x; posArr[1] = y; posArr[2] = z;
-            posArr[3] = x * spike; posArr[4] = y * spike; posArr[5] = z * spike;
+            posArr[0] = x;
+            posArr[1] = y;
+            posArr[2] = z;
+            posArr[3] = x * spike;
+            posArr[4] = y * spike;
+            posArr[5] = z * spike;
             this.groundStationLine.geometry.attributes.position.needsUpdate = true;
         }
     }
@@ -1589,7 +1710,7 @@ export class StarlinkTracker {
             const obsLon = this.observerLocation.lon * (Math.PI / 180);
             const observer = { lat: obsLat, lon: obsLon, alt: 0 };
 
-            const now = new Date();
+            const now = this.currentSimDate || new Date();
             const endTime = new Date(now.getTime() + CONSTANTS.PASS_PREDICTION_HOURS * 3600000);
             const stepMs = CONSTANTS.PASS_TIME_STEP_SEC * 1000;
 
@@ -1617,11 +1738,12 @@ export class StarlinkTracker {
                         // Pass ended — report it
                         const startStr = passStart.toISOString().split('T')[1].split('.')[0];
                         const endStr = date.toISOString().split('T')[1].split('.')[0];
-                        this.ui.passInfo.textContent =
-                            `Next pass: ${startStr}-${endStr} UTC, max el: ${maxEl.toFixed(1)}`;
+                        this.ui.passInfo.textContent = `Next pass: ${startStr}-${endStr} UTC, max el: ${maxEl.toFixed(1)}`;
                         return;
                     }
-                } catch (e) { /* skip step */ }
+                } catch (e) {
+                    /* skip step */
+                }
             }
 
             this.ui.passInfo.textContent = inPass
@@ -1703,10 +1825,14 @@ export class StarlinkTracker {
         // Window listeners
         const windowEvents = ['resize', 'mouseMove', 'windowClick', 'keyDown', 'online', 'offline'];
         const windowEventMap = {
-            resize: 'resize', mouseMove: 'mousemove', windowClick: 'click',
-            keyDown: 'keydown', online: 'online', offline: 'offline'
+            resize: 'resize',
+            mouseMove: 'mousemove',
+            windowClick: 'click',
+            keyDown: 'keydown',
+            online: 'online',
+            offline: 'offline'
         };
-        windowEvents.forEach(key => {
+        windowEvents.forEach((key) => {
             if (this._boundHandlers[key]) {
                 window.removeEventListener(windowEventMap[key], this._boundHandlers[key]);
             }
@@ -1726,15 +1852,23 @@ export class StarlinkTracker {
             this.ui.speedSlider.removeEventListener('input', this._boundHandlers.speedInput);
         }
 
+        // Action buttons
+        if (this._actionButtons) {
+            this._actionButtons.forEach(({ el, handler }) => {
+                el.removeEventListener('click', handler);
+            });
+            this._actionButtons = [];
+        }
+
         // Layer toggles
-        this.layerOrder.forEach(key => {
+        this.layerOrder.forEach((key) => {
             const handler = this._boundHandlers[`layer_${key}`];
             const el = this.ui.layers[key];
             if (handler && el) el.removeEventListener('change', handler);
         });
 
         // Three.js objects
-        Object.values(this.layerMeshes).forEach(mesh => {
+        Object.values(this.layerMeshes).forEach((mesh) => {
             if (mesh) {
                 this.scene.remove(mesh);
                 if (mesh.geometry) mesh.geometry.dispose();
@@ -1742,7 +1876,7 @@ export class StarlinkTracker {
             }
         });
 
-        this._disposables.forEach(obj => {
+        this._disposables.forEach((obj) => {
             if (obj && typeof obj.dispose === 'function') obj.dispose();
         });
 

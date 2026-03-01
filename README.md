@@ -10,11 +10,11 @@ A real-time 3D visualization of satellites orbiting Earth, including Starlink, I
 
 - **Real-time satellite tracking** using live TLE (Two-Line Element) data from CelesTrak
 - **Multiple constellation support**:
-  - 🌐 Starlink (~6000+ satellites)
-  - 🚀 ISS (International Space Station) with custom icon
-  - 📍 GPS navigation constellation
-  - 🇪🇺 Galileo navigation constellation
-  - 🌍 OneWeb broadband constellation
+    - 🌐 Starlink (~6000+ satellites)
+    - 🚀 ISS (International Space Station) with custom icon
+    - 📍 GPS navigation constellation
+    - 🇪🇺 Galileo navigation constellation
+    - 🌍 OneWeb broadband constellation
 - **Day/night Earth visualization** with realistic terminator
 - **Eclipse detection** - satellites show as dimmed when in Earth's shadow
 - **Orbit path visualization** for selected satellites
@@ -32,13 +32,13 @@ The application will automatically fetch live satellite data. If offline or if f
 
 ## 🎮 Controls
 
-| Control | Action |
-|---------|--------|
-| **Drag** | Rotate the view |
-| **Scroll / Pinch** | Zoom in/out |
-| **Click satellite** | Select and track |
-| **H** | Toggle UI panel |
-| **Escape** | Deselect satellite |
+| Control             | Action             |
+| ------------------- | ------------------ |
+| **Drag**            | Rotate the view    |
+| **Scroll / Pinch**  | Zoom in/out        |
+| **Click satellite** | Select and track   |
+| **H**               | Toggle UI panel    |
+| **Escape**          | Deselect satellite |
 
 ## 📊 Data Sources
 
@@ -49,6 +49,7 @@ The application will automatically fetch live satellite data. If offline or if f
 ### Data Source Badges
 
 Each constellation shows its data status:
+
 - 🟢 **LIVE** - Real-time TLE data from CelesTrak
 - 🔵 **CACHED** - Using locally cached TLE data (< 1 hour old)
 - 🟠 **SIM** - Simulated orbits (realistic but not tracking real satellites)
@@ -87,12 +88,12 @@ The tracker uses SGP4/SDP4 propagation algorithms for accurate satellite positio
 When live data is unavailable, realistic simulations use these parameters:
 
 | Constellation | Altitude (km) | Inclination (°) | Satellites |
-|---------------|---------------|-----------------|------------|
-| Starlink | 540-570 | 53-97.6 | ~3500 |
-| OneWeb | 1200 | 87.9 | 648 |
-| GPS | 20,200 | 55 | 32 |
-| Galileo | 23,222 | 56 | 24 |
-| ISS | 420 | 51.6 | 1 |
+| ------------- | ------------- | --------------- | ---------- |
+| Starlink      | 540-570       | 53-97.6         | ~3500      |
+| OneWeb        | 1200          | 87.9            | 648        |
+| GPS           | 20,200        | 55              | 32         |
+| Galileo       | 23,222        | 56              | 24         |
+| ISS           | 420           | 51.6            | 1          |
 
 ## 📁 Project Structure
 
@@ -119,10 +120,10 @@ All configurable values are in the `CONSTANTS` object at the top of the script w
 
 ```javascript
 const CONSTANTS = {
-    EARTH_RADIUS_KM: 6371,           // Earth's radius
-    RENDER_SCALE: 0.001,             // km to Three.js units
-    PHYSICS_HZ: 30,                  // Update frequency
-    CACHE_TTL_MS: 3600000,           // Cache lifetime (1 hour)
+    EARTH_RADIUS_KM: 6371, // Earth's radius
+    RENDER_SCALE: 0.001, // km to Three.js units
+    PHYSICS_HZ: 30, // Update frequency
+    CACHE_TTL_MS: 3600000 // Cache lifetime (1 hour)
     // ... etc
 };
 ```

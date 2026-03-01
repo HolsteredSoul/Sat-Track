@@ -52,7 +52,7 @@ describe('sanitizeHTML', () => {
 describe('validateTLELine', () => {
     // Real ISS TLE lines
     const validLine1 = '1 25544U 98067A   24001.50000000  .00016717  00000-0  10270-3 0  9997';
-    const validLine2 = '2 25544  51.6400 208.9163 0006703  30.8756 329.2838 15.50110261999990';
+    const validLine2 = '2 25544  51.6400 208.9163 0006703  30.8756 329.2838 15.50110261999994';
 
     test('validates a correct line 1', () => {
         const result = validateTLELine(validLine1, 1);
@@ -60,12 +60,8 @@ describe('validateTLELine', () => {
     });
 
     test('validates a correct line 2', () => {
-        // We need a line 2 with correct checksum
-        // Using a manually constructed valid line 2
-        const line2 = '2 25544  51.6400 208.9163 0006703  30.8756 329.2838 15.50110261    02';
-        const result = validateTLELine(line2, 2);
-        // Checksum may or may not match; test that it runs
-        expect(result).toHaveProperty('valid');
+        const result = validateTLELine(validLine2, 2);
+        expect(result.valid).toBe(true);
     });
 
     test('rejects non-string input', () => {
@@ -85,6 +81,21 @@ describe('validateTLELine', () => {
         expect(result.valid).toBe(false);
         expect(result.error).toContain('does not start with');
     });
+
+    test('rejects incorrect checksum', () => {
+        // Change last digit to break checksum
+        const badLine = '1 25544U 98067A   24001.50000000  .00016717  00000-0  10270-3 0  9990';
+        const result = validateTLELine(badLine, 1);
+        expect(result.valid).toBe(false);
+        expect(result.error).toContain('Checksum mismatch');
+    });
+
+    test('rejects non-numeric checksum character', () => {
+        const badLine = '1 25544U 98067A   24001.50000000  .00016717  00000-0  10270-3 0  999X';
+        const result = validateTLELine(badLine, 1);
+        expect(result.valid).toBe(false);
+        expect(result.error).toContain('Invalid checksum character');
+    });
 });
 
 // ============================================================================
@@ -101,6 +112,14 @@ describe('validateTLE', () => {
         const result = validateTLE('SAT', 'bad', 'bad');
         expect(result.valid).toBe(false);
         expect(result.errors.length).toBeGreaterThanOrEqual(2);
+    });
+
+    test('validates correct complete TLE', () => {
+        const line1 = '1 25544U 98067A   24001.50000000  .00016717  00000-0  10270-3 0  9997';
+        const line2 = '2 25544  51.6400 208.9163 0006703  30.8756 329.2838 15.50110261999994';
+        const result = validateTLE('ISS (ZARYA)', line1, line2);
+        expect(result.valid).toBe(true);
+        expect(result.errors).toHaveLength(0);
     });
 });
 
@@ -142,6 +161,21 @@ describe('computeShadowFactorKm', () => {
         const sunDir = { x: 0, y: 0, z: 1 };
         const result = computeShadowFactorKm(0, 0, -7000, sunDir);
         expect(result).toBe(1); // In umbra
+    });
+
+    test('returns 0 when projKm is exactly 0 (at terminator plane)', () => {
+        const sunDir = { x: 1, y: 0, z: 0 };
+        // Satellite perpendicular to sun direction (projKm = 0)
+        const result = computeShadowFactorKm(0, 7000, 0, sunDir);
+        expect(result).toBe(0);
+    });
+
+    test('handles diagonal sun direction correctly', () => {
+        const norm = 1 / Math.sqrt(3);
+        const sunDir = { x: norm, y: norm, z: norm };
+        // Satellite on the sun side
+        const result = computeShadowFactorKm(10000, 10000, 10000, sunDir);
+        expect(result).toBe(0);
     });
 });
 

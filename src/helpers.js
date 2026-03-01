@@ -48,9 +48,9 @@ export function handleError(context, error, showToUser = false) {
  * @throws {Error} The last error if all attempts fail
  */
 export async function retryWithBackoff(fn, opts = {}) {
-    const maxAttempts = opts.maxAttempts || CONSTANTS.RETRY_MAX_ATTEMPTS;
-    const baseDelay = opts.baseDelay || CONSTANTS.RETRY_BASE_DELAY_MS;
-    const multiplier = opts.multiplier || CONSTANTS.RETRY_BACKOFF_MULTIPLIER;
+    const maxAttempts = opts.maxAttempts ?? CONSTANTS.RETRY_MAX_ATTEMPTS;
+    const baseDelay = opts.baseDelay ?? CONSTANTS.RETRY_BASE_DELAY_MS;
+    const multiplier = opts.multiplier ?? CONSTANTS.RETRY_BACKOFF_MULTIPLIER;
 
     let lastError;
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
@@ -60,7 +60,7 @@ export async function retryWithBackoff(fn, opts = {}) {
             lastError = error;
             if (attempt < maxAttempts - 1) {
                 const delay = baseDelay * Math.pow(multiplier, attempt);
-                await new Promise(resolve => setTimeout(resolve, delay));
+                await new Promise((resolve) => setTimeout(resolve, delay));
             }
         }
     }
@@ -107,12 +107,12 @@ export function createISSIcon() {
     ctx.lineWidth = 0.5;
     for (let i = 1; i < 4; i++) {
         ctx.beginPath();
-        ctx.moveTo(cx - 28 + (i * 4.5), cy - 4);
-        ctx.lineTo(cx - 28 + (i * 4.5), cy + 4);
+        ctx.moveTo(cx - 28 + i * 4.5, cy - 4);
+        ctx.lineTo(cx - 28 + i * 4.5, cy + 4);
         ctx.stroke();
         ctx.beginPath();
-        ctx.moveTo(cx + 10 + (i * 4.5), cy - 4);
-        ctx.lineTo(cx + 10 + (i * 4.5), cy + 4);
+        ctx.moveTo(cx + 10 + i * 4.5, cy - 4);
+        ctx.lineTo(cx + 10 + i * 4.5, cy + 4);
         ctx.stroke();
     }
 

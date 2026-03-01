@@ -32,9 +32,9 @@ export const CONSTANTS = {
     UMBRA_THRESHOLD: 0.98,
     PENUMBRA_MIN_THRESHOLD: 0.02,
     SHADOW_COLOR_EXPONENT: 1.25,
-    TERMINATOR_BLEND_START: -0.10,
-    TERMINATOR_BLEND_END: 0.10,
-    ATMOSPHERE_SCATTER_START: 0.20,
+    TERMINATOR_BLEND_START: -0.1,
+    TERMINATOR_BLEND_END: 0.1,
+    ATMOSPHERE_SCATTER_START: 0.2,
 
     // === Network & Caching ===
     CACHE_TTL_MS: 3600000,
@@ -84,10 +84,7 @@ export const CONSTANTS = {
     PASS_MIN_ELEVATION_DEG: 10,
     PASS_TIME_STEP_SEC: 30,
 
-    // === CDN URLs ===
-    CDN_THREE: 'https://unpkg.com/three@0.128.0/build/three.min.js',
-    CDN_ORBIT_CONTROLS: 'https://unpkg.com/three@0.128.0/examples/js/controls/OrbitControls.js',
-    CDN_SATELLITE: 'https://unpkg.com/satellite.js@4.0.0/dist/satellite.min.js',
+    // === Texture URLs ===
     EARTH_DAY_TEXTURE: 'https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg',
     EARTH_NIGHT_TEXTURE: 'https://unpkg.com/three-globe/example/img/earth-night.jpg',
 
@@ -116,8 +113,17 @@ export const CONSTANTS = {
     // === CORS Proxies ===
     CORS_PROXIES: [
         { name: 'corsproxy.io', template: 'https://corsproxy.io/?{url}', parseJson: false },
-        { name: 'allorigins', template: 'https://api.allorigins.win/get?url={url}', parseJson: true, field: 'contents' },
-        { name: 'codetabs', template: 'https://api.codetabs.com/v1/proxy?quest={url}', parseJson: false }
+        {
+            name: 'allorigins',
+            template: 'https://api.allorigins.win/get?url={url}',
+            parseJson: true,
+            field: 'contents'
+        },
+        {
+            name: 'codetabs',
+            template: 'https://api.codetabs.com/v1/proxy?quest={url}',
+            parseJson: false
+        }
     ],
 
     // === Simulation Shell Parameters ===
