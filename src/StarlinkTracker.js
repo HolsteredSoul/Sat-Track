@@ -585,14 +585,10 @@ export class StarlinkTracker {
 
         // Search keyboard navigation (arrow keys + Enter)
         this._boundHandlers.searchKeyDown = (e) => {
-            const items = Array.from(
-                this.ui.searchResults.querySelectorAll('.search-item')
-            );
+            const items = Array.from(this.ui.searchResults.querySelectorAll('.search-item'));
             if (!items.length) return;
 
-            const current = this.ui.searchResults.querySelector(
-                '.search-item.keyboard-selected'
-            );
+            const current = this.ui.searchResults.querySelector('.search-item.keyboard-selected');
             let idx = items.indexOf(current);
 
             if (e.key === 'ArrowDown') {
@@ -756,13 +752,15 @@ export class StarlinkTracker {
             matches.forEach((m) => {
                 const div = document.createElement('div');
                 div.className = 'search-item';
-                div.style.cssText = 'display:flex; justify-content:space-between; align-items:center;';
+                div.style.cssText =
+                    'display:flex; justify-content:space-between; align-items:center;';
                 div.dataset.layer = m.layer;
                 div.dataset.index = m.index;
 
                 // Name with matched text highlighted
                 const nameSpan = document.createElement('span');
-                nameSpan.style.cssText = 'overflow:hidden; text-overflow:ellipsis; white-space:nowrap;';
+                nameSpan.style.cssText =
+                    'overflow:hidden; text-overflow:ellipsis; white-space:nowrap;';
                 const name = m.name;
                 const matchIdx = name.toLowerCase().indexOf(val);
                 if (matchIdx !== -1) {
@@ -772,7 +770,9 @@ export class StarlinkTracker {
                         'background:rgba(51,170,255,0.35); color:inherit; border-radius:2px; padding:0 1px;';
                     mark.textContent = name.slice(matchIdx, matchIdx + val.length);
                     nameSpan.appendChild(mark);
-                    nameSpan.appendChild(document.createTextNode(name.slice(matchIdx + val.length)));
+                    nameSpan.appendChild(
+                        document.createTextNode(name.slice(matchIdx + val.length))
+                    );
                 } else {
                     nameSpan.textContent = name;
                 }
