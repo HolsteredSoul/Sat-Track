@@ -1921,9 +1921,7 @@ export class StarlinkTracker {
     cycleConstellationLayer() {
         const enabledLayers = this.layerOrder.filter(
             (k) =>
-                this.layers[k].enabled &&
-                this.layerData[k] &&
-                this.layerData[k].satData.length > 0
+                this.layers[k].enabled && this.layerData[k] && this.layerData[k].satData.length > 0
         );
         if (enabledLayers.length === 0) return;
         this.cycleLayerIndex = (this.cycleLayerIndex + 1) % enabledLayers.length;
@@ -1983,7 +1981,10 @@ export class StarlinkTracker {
             this.ui.speedSlider.removeEventListener('input', this._boundHandlers.speedInput);
         }
         if (this._boundHandlers.pixelSizeInput && this.ui.pixelSizeSlider) {
-            this.ui.pixelSizeSlider.removeEventListener('input', this._boundHandlers.pixelSizeInput);
+            this.ui.pixelSizeSlider.removeEventListener(
+                'input',
+                this._boundHandlers.pixelSizeInput
+            );
         }
 
         // Action buttons
