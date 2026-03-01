@@ -252,6 +252,12 @@ export class StarlinkTracker {
             this.setupISSSprite();
             this.setupEvents();
 
+            // Collapse panel by default on mobile so the globe is visible
+            if (window.innerWidth <= 768) {
+                this.ui.container.classList.add('hidden');
+                this.ui.toggleBtn.textContent = '\u2630';
+            }
+
             // Set timezone label once (browser's local timezone)
             if (this.ui.localTzLabel) {
                 const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
