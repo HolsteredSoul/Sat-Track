@@ -555,6 +555,12 @@
         <div class="range-info"><span>Real</span><span>Fast</span></div>
     </div>
 
+    <div class="control-group">
+        <label for="pixelSizeSlider">Satellite Size (<span id="pixelSizeDisplay">2</span> px)</label>
+        <input type="range" id="pixelSizeSlider" min="1" max="8" step="0.5" value="2">
+        <div class="range-info"><span>Small</span><span>Large</span></div>
+    </div>
+
     <h2>Search</h2>
     <div class="control-group">
         <input type="text" id="search-box" placeholder="Search Satellite ID...">
@@ -664,8 +670,10 @@
     <div class="tooltip-row" id="tooltip-locked" style="color:#0f0; font-size:0.7em; margin-top:4px; display:none;">TARGET LOCKED</div>
 </div>
 
+<div id="pause-indicator" style="display:none; position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); background:rgba(0,0,0,0.7); color:#fff; padding:12px 24px; border-radius:12px; font-size:18px; font-weight:600; pointer-events:none; z-index:200; letter-spacing:0.05em;">⏸ PAUSED</div>
+
 <div id="controls">
-    Drag: Rotate | Scroll/Pinch: Zoom | Click: Select | H: Toggle UI | ?: Shortcuts
+    Drag: Rotate | Scroll: Zoom | Click: Select | H: UI | P: Pause | R: Reset | C: Cycle | ?: Shortcuts
 </div>
 
 <div id="error-toast" role="alert" aria-live="assertive"></div>
@@ -693,6 +701,18 @@
         <div class="shortcut-row">
             <span>Set ground station</span>
             <span class="shortcut-key">G</span>
+        </div>
+        <div class="shortcut-row">
+            <span>Pause / Resume time</span>
+            <span class="shortcut-key">P</span>
+        </div>
+        <div class="shortcut-row">
+            <span>Reset camera view</span>
+            <span class="shortcut-key">R</span>
+        </div>
+        <div class="shortcut-row">
+            <span>Cycle constellation</span>
+            <span class="shortcut-key">C</span>
         </div>
         <div class="shortcut-row">
             <span>Deselect / Close</span>
