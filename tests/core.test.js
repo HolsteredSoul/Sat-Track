@@ -6,7 +6,8 @@ import {
     SimulatedOrbit,
     calculateElevation,
     calculateSunDirection,
-    isMobileDevice
+    isMobileDevice,
+    clampPointSize
 } from '../src/core.js';
 
 // ============================================================================
@@ -317,5 +318,42 @@ describe('isMobileDevice', () => {
         // The function should handle this gracefully
         const result = isMobileDevice();
         expect(typeof result).toBe('boolean');
+    });
+});
+
+// ============================================================================
+// clampPointSize
+// ============================================================================
+describe('clampPointSize', () => {
+    test('returns value unchanged when within range', () => {
+        expect(clampPointSize(4, 1, 8)).toBe(4);
+        expect(clampPointSize(1, 1, 8)).toBe(1);
+        expect(clampPointSize(8, 1, 8)).toBe(8);
+    });
+
+    test('clamps value below minimum to minimum', () => {
+        expect(clampPointSize(0, 1, 8)).toBe(1);
+        expect(clampPointSize(-5, 1, 8)).toBe(1);
+    });
+
+    test('clamps value above maximum to maximum', () => {
+        expect(clampPointSize(10, 1, 8)).toBe(8);
+        expect(clampPointSize(999, 1, 8)).toBe(8);
+    });
+
+    test('returns min for NaN input', () => {
+        expect(clampPointSize(NaN, 1, 8)).toBe(1);
+    });
+
+    test('returns min for non-number input', () => {
+        expect(clampPointSize('big', 1, 8)).toBe(1);
+        expect(clampPointSize(undefined, 1, 8)).toBe(1);
+        expect(clampPointSize(null, 1, 8)).toBe(1);
+    });
+
+    test('works with fractional step values', () => {
+        expect(clampPointSize(2.5, 1, 8)).toBe(2.5);
+        expect(clampPointSize(0.5, 1, 8)).toBe(1);
+        expect(clampPointSize(8.5, 1, 8)).toBe(8);
     });
 });

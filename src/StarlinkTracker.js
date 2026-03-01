@@ -10,7 +10,8 @@ import {
     SimulatedOrbit,
     calculateElevation,
     isMobileDevice,
-    validateTLE
+    validateTLE,
+    clampPointSize
 } from './core.js';
 import {
     handleError,
@@ -18,7 +19,9 @@ import {
     retryWithBackoff,
     createISSIcon,
     saveThemePreference,
-    loadThemePreference
+    loadThemePreference,
+    savePointSizePreference,
+    loadPointSizePreference
 } from './helpers.js';
 
 /* global THREE, satellite */
@@ -125,6 +128,20 @@ export class StarlinkTracker {
         this.isInitialized = false;
         this.isDisposed = false;
 
+        // === Pause State ===
+        this.paused = false;
+        this.pauseWallTime = 0;
+
+        // === Point Size ===
+        this.pointSize = clampPointSize(
+            loadPointSizePreference(CONSTANTS.POINT_SIZE_DEFAULT),
+            CONSTANTS.POINT_SIZE_MIN,
+            CONSTANTS.POINT_SIZE_MAX
+        );
+
+        // === Constellation Cycle State ===
+        this.cycleLayerIndex = -1;
+
         // === Observer / Ground Station ===
         this.observerLocation = null; // { lat, lon } in degrees
         this.groundStationMarker = null;
@@ -158,6 +175,9 @@ export class StarlinkTracker {
             slider: document.getElementById('growthSlider'),
             speedSlider: document.getElementById('timeSpeed'),
             speedDisplay: document.getElementById('speedDisplay'),
+            pixelSizeSlider: document.getElementById('pixelSizeSlider'),
+            pixelSizeDisplay: document.getElementById('pixelSizeDisplay'),
+            pauseIndicator: document.getElementById('pause-indicator'),
             loader: document.getElementById('loader-overlay'),
             loaderText: document.getElementById('loader-text'),
             progress: document.getElementById('progress-fill'),
@@ -567,22 +587,38 @@ export class StarlinkTracker {
 
         // Keyboard
         this._boundHandlers.keyDown = (e) => {
+            const inInput = !!e.target.closest('input, textarea');
+
             if (e.key === 'Escape') {
                 if (
                     this.ui.keyboardOverlay &&
                     this.ui.keyboardOverlay.classList.contains('visible')
                 ) {
                     this.ui.keyboardOverlay.classList.remove('visible');
-                } else {
+                } else if (!inInput) {
                     this.resetSelection();
                 }
+                return;
             }
-            if (e.key.toLowerCase() === 'h') toggleMenu();
-            if (e.key === '?') this.toggleKeyboardOverlay();
-            if (e.key.toLowerCase() === 't' && !e.target.closest('input')) this.toggleTheme();
-            if (e.key.toLowerCase() === 'e' && !e.target.closest('input')) this.exportScreenshot();
-            if (e.key.toLowerCase() === 'g' && !e.target.closest('input'))
-                this.requestGroundStation();
+
+            if (inInput) return;
+
+            // Use e.code as a cross-layout fallback alongside e.key where needed.
+            const key = e.key.toLowerCase();
+            const code = e.code;
+
+            if (key === 'h' || code === 'KeyH') toggleMenu();
+            // ? is Shift+/ on US layout; e.code covers non-US keyboards
+            if (key === '?' || (e.shiftKey && code === 'Slash')) this.toggleKeyboardOverlay();
+            if (key === 't' || code === 'KeyT') this.toggleTheme();
+            if (key === 'e' || code === 'KeyE') this.exportScreenshot();
+            if (key === 'g' || code === 'KeyG') this.requestGroundStation();
+            if (key === 'p' || code === 'KeyP' || code === 'Space') {
+                e.preventDefault();
+                this.togglePause();
+            }
+            if (key === 'r' || code === 'KeyR') this.resetCamera();
+            if (key === 'c' || code === 'KeyC') this.cycleConstellationLayer();
         };
         window.addEventListener('keydown', this._boundHandlers.keyDown);
 
@@ -591,6 +627,21 @@ export class StarlinkTracker {
             this.ui.speedDisplay.textContent = e.target.value;
         };
         this.ui.speedSlider.addEventListener('input', this._boundHandlers.speedInput);
+
+        // Pixel size slider
+        if (this.ui.pixelSizeSlider) {
+            this.ui.pixelSizeSlider.value = this.pointSize;
+            if (this.ui.pixelSizeDisplay) this.ui.pixelSizeDisplay.textContent = this.pointSize;
+            this._boundHandlers.pixelSizeInput = (e) => {
+                const size = clampPointSize(
+                    parseFloat(e.target.value),
+                    CONSTANTS.POINT_SIZE_MIN,
+                    CONSTANTS.POINT_SIZE_MAX
+                );
+                this.setPointSize(size);
+            };
+            this.ui.pixelSizeSlider.addEventListener('input', this._boundHandlers.pixelSizeInput);
+        }
 
         // Online/offline
         this._boundHandlers.online = () => {
@@ -1203,7 +1254,7 @@ export class StarlinkTracker {
 
             const material = new THREE.PointsMaterial({
                 map: this.pointTex,
-                size: CONSTANTS.POINT_SIZE_DEFAULT,
+                size: this.pointSize,
                 vertexColors: true,
                 transparent: true,
                 alphaTest: 0.5,
@@ -1242,6 +1293,7 @@ export class StarlinkTracker {
      */
     updatePhysics() {
         if (!this.referenceTime || !this.isInitialized) return;
+        if (this.paused) return;
 
         const now = performance.now();
         const rate = 1000 / this.effectivePhysicsHz;
@@ -1801,6 +1853,85 @@ export class StarlinkTracker {
     }
 
     // ========================================================================
+    // POINT SIZE
+    // ========================================================================
+
+    /**
+     * Updates the satellite point size across all layer materials and persists
+     * the preference to localStorage.
+     * @param {number} size - New point size in screen pixels
+     */
+    setPointSize(size) {
+        this.pointSize = clampPointSize(size, CONSTANTS.POINT_SIZE_MIN, CONSTANTS.POINT_SIZE_MAX);
+        Object.values(this.layerMeshes).forEach((mesh) => {
+            if (mesh && mesh.material) mesh.material.size = this.pointSize;
+        });
+        if (this.ui.pixelSizeDisplay) this.ui.pixelSizeDisplay.textContent = this.pointSize;
+        savePointSizePreference(this.pointSize);
+    }
+
+    // ========================================================================
+    // PAUSE / RESUME
+    // ========================================================================
+
+    /**
+     * Toggles simulation pause state. When unpausing, shifts simStartTime so
+     * the simulation continues from the exact moment it was frozen.
+     */
+    togglePause() {
+        if (this.paused) {
+            // Shift the start time forward by how long we were paused so elapsed
+            // time continues seamlessly from the frozen moment.
+            this.simStartTime += performance.now() - this.pauseWallTime;
+            this.paused = false;
+        } else {
+            this.pauseWallTime = performance.now();
+            this.paused = true;
+        }
+        if (this.ui.pauseIndicator) {
+            this.ui.pauseIndicator.style.display = this.paused ? 'block' : 'none';
+        }
+    }
+
+    // ========================================================================
+    // CAMERA RESET
+    // ========================================================================
+
+    /**
+     * Resets the camera to its default position and orientation.
+     */
+    resetCamera() {
+        this.camera.position.set(
+            CONSTANTS.CAMERA_INITIAL_DISTANCE,
+            CONSTANTS.CAMERA_INITIAL_DISTANCE * 0.48,
+            CONSTANTS.CAMERA_INITIAL_DISTANCE
+        );
+        this.controls.target.set(0, 0, 0);
+        this.controls.update();
+    }
+
+    // ========================================================================
+    // CONSTELLATION CYCLE
+    // ========================================================================
+
+    /**
+     * Cycles the selection to the first satellite of the next enabled
+     * constellation layer.
+     */
+    cycleConstellationLayer() {
+        const enabledLayers = this.layerOrder.filter(
+            (k) =>
+                this.layers[k].enabled &&
+                this.layerData[k] &&
+                this.layerData[k].satData.length > 0
+        );
+        if (enabledLayers.length === 0) return;
+        this.cycleLayerIndex = (this.cycleLayerIndex + 1) % enabledLayers.length;
+        const layerKey = enabledLayers[this.cycleLayerIndex];
+        this.selectSatellite(layerKey, 0);
+    }
+
+    // ========================================================================
     // KEYBOARD OVERLAY
     // ========================================================================
 
@@ -1850,6 +1981,9 @@ export class StarlinkTracker {
         }
         if (this._boundHandlers.speedInput && this.ui.speedSlider) {
             this.ui.speedSlider.removeEventListener('input', this._boundHandlers.speedInput);
+        }
+        if (this._boundHandlers.pixelSizeInput && this.ui.pixelSizeSlider) {
+            this.ui.pixelSizeSlider.removeEventListener('input', this._boundHandlers.pixelSizeInput);
         }
 
         // Action buttons

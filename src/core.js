@@ -7,6 +7,18 @@
 import { CONSTANTS } from './constants.js';
 
 /**
+ * Clamps a point size value to the allowed min/max range.
+ * @param {number} size - Raw point size value
+ * @param {number} min - Minimum allowed size
+ * @param {number} max - Maximum allowed size
+ * @returns {number} The clamped value
+ */
+export function clampPointSize(size, min, max) {
+    if (typeof size !== 'number' || isNaN(size)) return min;
+    return Math.min(max, Math.max(min, size));
+}
+
+/**
  * Sanitizes a string to prevent XSS attacks by escaping HTML special characters.
  * @param {string} str - The string to sanitize
  * @returns {string} The sanitized string safe for HTML insertion

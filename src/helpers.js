@@ -172,3 +172,30 @@ export function loadThemePreference() {
         return 'dark';
     }
 }
+
+/**
+ * Saves the satellite point size preference to localStorage.
+ * @param {number} size - Point size in screen pixels
+ */
+export function savePointSizePreference(size) {
+    try {
+        localStorage.setItem('sat-track-point-size', String(size));
+    } catch (e) {
+        // localStorage may be unavailable
+    }
+}
+
+/**
+ * Loads the saved satellite point size preference.
+ * @param {number} defaultSize - Fallback value if nothing is stored
+ * @returns {number} The saved point size
+ */
+export function loadPointSizePreference(defaultSize) {
+    try {
+        const stored = localStorage.getItem('sat-track-point-size');
+        const parsed = parseFloat(stored);
+        return isNaN(parsed) ? defaultSize : parsed;
+    } catch (e) {
+        return defaultSize;
+    }
+}
