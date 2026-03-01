@@ -184,6 +184,7 @@ export class StarlinkTracker {
             loaderText: document.getElementById('loader-text'),
             progress: document.getElementById('progress-fill'),
             searchBox: document.getElementById('search-box'),
+            searchCount: document.getElementById('search-count'),
             searchResults: document.getElementById('search-results'),
             checkOrbit: document.getElementById('toggle-orbit'),
             offlineBanner: document.getElementById('offline-banner'),
@@ -582,6 +583,33 @@ export class StarlinkTracker {
         };
         this.ui.searchBox.addEventListener('input', this._boundHandlers.searchInput);
 
+        // Search keyboard navigation (arrow keys + Enter)
+        this._boundHandlers.searchKeyDown = (e) => {
+            const items = Array.from(this.ui.searchResults.querySelectorAll('.search-item'));
+            if (!items.length) return;
+
+            const current = this.ui.searchResults.querySelector('.search-item.keyboard-selected');
+            let idx = items.indexOf(current);
+
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                idx = idx < items.length - 1 ? idx + 1 : 0;
+                items.forEach((i) => i.classList.remove('keyboard-selected'));
+                items[idx].classList.add('keyboard-selected');
+                items[idx].scrollIntoView({ block: 'nearest' });
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                idx = idx > 0 ? idx - 1 : items.length - 1;
+                items.forEach((i) => i.classList.remove('keyboard-selected'));
+                items[idx].classList.add('keyboard-selected');
+                items[idx].scrollIntoView({ block: 'nearest' });
+            } else if (e.key === 'Enter' && current) {
+                e.preventDefault();
+                this.selectSatellite(current.dataset.layer, parseInt(current.dataset.index, 10));
+            }
+        };
+        this.ui.searchBox.addEventListener('keydown', this._boundHandlers.searchKeyDown);
+
         // Window click for selection
         this._boundHandlers.windowClick = (e) => {
             if (
@@ -687,6 +715,7 @@ export class StarlinkTracker {
         bindBtn('btn-theme', () => this.toggleTheme());
         bindBtn('btn-keyboard', () => this.toggleKeyboardOverlay());
         bindBtn('btn-reset-time', () => this.resetToNow());
+        bindBtn('btn-share', () => this.copyShareableURL());
         bindBtn('keyboard-overlay-close', () => {
             this.ui.keyboardOverlay.classList.remove('visible');
         });
@@ -703,20 +732,58 @@ export class StarlinkTracker {
     performSearch(val) {
         const results = this.ui.searchResults;
         results.innerHTML = '';
+        if (this.ui.searchCount) this.ui.searchCount.textContent = '';
         val = val.toLowerCase();
         if (val.length < CONSTANTS.SEARCH_MIN_CHARS) return;
 
         try {
-            const matches = this.allSatIndex
-                .filter((item) => item.name && item.name.toLowerCase().includes(val))
-                .slice(0, CONSTANTS.SEARCH_MAX_RESULTS);
+            const allMatches = this.allSatIndex.filter(
+                (item) => item.name && item.name.toLowerCase().includes(val)
+            );
+            const matches = allMatches.slice(0, CONSTANTS.SEARCH_MAX_RESULTS);
+
+            if (this.ui.searchCount && allMatches.length > 0) {
+                this.ui.searchCount.textContent =
+                    allMatches.length > CONSTANTS.SEARCH_MAX_RESULTS
+                        ? `Showing ${CONSTANTS.SEARCH_MAX_RESULTS} of ${allMatches.length} matches`
+                        : `${allMatches.length} match${allMatches.length !== 1 ? 'es' : ''}`;
+            }
 
             matches.forEach((m) => {
                 const div = document.createElement('div');
                 div.className = 'search-item';
-                div.textContent = `${m.name}  [${this.layers[m.layer].label}]`;
+                div.style.cssText =
+                    'display:flex; justify-content:space-between; align-items:center;';
                 div.dataset.layer = m.layer;
                 div.dataset.index = m.index;
+
+                // Name with matched text highlighted
+                const nameSpan = document.createElement('span');
+                nameSpan.style.cssText =
+                    'overflow:hidden; text-overflow:ellipsis; white-space:nowrap;';
+                const name = m.name;
+                const matchIdx = name.toLowerCase().indexOf(val);
+                if (matchIdx !== -1) {
+                    nameSpan.appendChild(document.createTextNode(name.slice(0, matchIdx)));
+                    const mark = document.createElement('mark');
+                    mark.style.cssText =
+                        'background:rgba(51,170,255,0.35); color:inherit; border-radius:2px; padding:0 1px;';
+                    mark.textContent = name.slice(matchIdx, matchIdx + val.length);
+                    nameSpan.appendChild(mark);
+                    nameSpan.appendChild(
+                        document.createTextNode(name.slice(matchIdx + val.length))
+                    );
+                } else {
+                    nameSpan.textContent = name;
+                }
+
+                const labelSpan = document.createElement('span');
+                labelSpan.style.cssText =
+                    'color:var(--ui-subtext); font-size:10px; white-space:nowrap; margin-left:8px; flex-shrink:0;';
+                labelSpan.textContent = `[${this.layers[m.layer].label}]`;
+
+                div.appendChild(nameSpan);
+                div.appendChild(labelSpan);
                 results.appendChild(div);
             });
         } catch (error) {
@@ -866,6 +933,7 @@ export class StarlinkTracker {
         await this.initTimeSync();
         this.createLayerMeshes();
         this.rebuildSearchIndex();
+        this.restoreFromURL();
 
         this.ui.progress.style.width = '100%';
         if (!this.ui.statusText.innerText.includes('Synced')) {
@@ -1958,6 +2026,84 @@ export class StarlinkTracker {
     }
 
     // ========================================================================
+    // SHAREABLE URL
+    // ========================================================================
+
+    /**
+     * Returns a URL encoding the current simulation state: selected satellite,
+     * camera position, and simulation time.
+     * @returns {string} Shareable URL
+     */
+    getShareableURL() {
+        const params = new URLSearchParams();
+
+        if (this.selected) {
+            params.set('sat', `${this.selected.layer}:${this.selected.index}`);
+        }
+
+        if (this.camera) {
+            const p = this.camera.position;
+            params.set('cam', `${p.x.toFixed(2)},${p.y.toFixed(2)},${p.z.toFixed(2)}`);
+        }
+
+        if (this.currentSimDate) {
+            params.set('t', this.currentSimDate.toISOString());
+        }
+
+        const base = `${window.location.origin}${window.location.pathname}`;
+        return `${base}?${params}`;
+    }
+
+    /**
+     * Copies the shareable URL for the current view to the clipboard and
+     * shows a confirmation toast.
+     */
+    copyShareableURL() {
+        const url = this.getShareableURL();
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(url).then(() => {
+                showErrorToast('Link copied to clipboard!');
+            });
+        } else {
+            // Fallback: prompt so the user can copy manually
+            window.prompt('Copy this shareable link:', url);
+        }
+    }
+
+    /**
+     * Restores camera position, simulation time, and satellite selection from
+     * URL query parameters (written by getShareableURL). Must be called after
+     * satellite data and meshes are ready.
+     */
+    restoreFromURL() {
+        const params = new URLSearchParams(window.location.search);
+
+        if (params.has('cam') && this.camera) {
+            const parts = params.get('cam').split(',').map(Number);
+            if (parts.length === 3 && parts.every((n) => !isNaN(n))) {
+                this.camera.position.set(parts[0], parts[1], parts[2]);
+                if (this.controls) this.controls.update();
+            }
+        }
+
+        if (params.has('t')) {
+            const epoch = new Date(params.get('t')).getTime();
+            if (!isNaN(epoch)) {
+                this.referenceTime = epoch;
+                this.simStartTime = performance.now();
+            }
+        }
+
+        if (params.has('sat')) {
+            const [layer, idxStr] = params.get('sat').split(':');
+            const index = parseInt(idxStr, 10);
+            if (layer && !isNaN(index) && this.layerData[layer]) {
+                this.selectSatellite(layer, index);
+            }
+        }
+    }
+
+    // ========================================================================
     // CAMERA RESET
     // ========================================================================
 
@@ -2040,6 +2186,9 @@ export class StarlinkTracker {
         }
         if (this._boundHandlers.searchInput && this.ui.searchBox) {
             this.ui.searchBox.removeEventListener('input', this._boundHandlers.searchInput);
+        }
+        if (this._boundHandlers.searchKeyDown && this.ui.searchBox) {
+            this.ui.searchBox.removeEventListener('keydown', this._boundHandlers.searchKeyDown);
         }
         if (this._boundHandlers.speedInput && this.ui.speedSlider) {
             this.ui.speedSlider.removeEventListener('input', this._boundHandlers.speedInput);
