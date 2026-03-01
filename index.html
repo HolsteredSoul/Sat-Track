@@ -256,6 +256,19 @@
             border-color: rgba(51, 170, 255, 0.2);
         }
 
+        .search-item.keyboard-selected {
+            background: rgba(51, 170, 255, 0.25);
+            border-color: rgba(51, 170, 255, 0.5);
+            outline: none;
+        }
+
+        #search-count {
+            font-size: 10px;
+            color: var(--ui-subtext);
+            margin-bottom: 6px;
+            padding: 0 2px;
+        }
+
         #loader-overlay {
             position: fixed;
             inset: 0;
@@ -574,7 +587,8 @@
 
     <h2>Search</h2>
     <div class="control-group">
-        <input type="text" id="search-box" placeholder="Search Satellite ID...">
+        <input type="text" id="search-box" placeholder="Search satellites by name...">
+        <div id="search-count"></div>
         <div id="search-results"></div>
     </div>
     <div id="pass-info"></div>
@@ -667,6 +681,10 @@
         <button class="action-btn" id="btn-keyboard" aria-label="Show keyboard shortcuts">
             <span class="action-btn-icon" aria-hidden="true">&#9000;</span>
             Keys
+        </button>
+        <button class="action-btn" id="btn-share" aria-label="Copy shareable link to clipboard">
+            <span class="action-btn-icon" aria-hidden="true">&#128279;</span>
+            Share
         </button>
     </div>
 </div>
