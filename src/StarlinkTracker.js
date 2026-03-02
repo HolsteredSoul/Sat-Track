@@ -1451,7 +1451,11 @@ export class StarlinkTracker {
 
                 totalActive += activeCount;
                 const baseC = this.layers[layerKey].color;
-                const darkC = CONSTANTS.DARK_COLOR;
+                const darkC = {
+                    r: baseC.r * CONSTANTS.ECLIPSE_DIM_FACTOR,
+                    g: baseC.g * CONSTANTS.ECLIPSE_DIM_FACTOR,
+                    b: baseC.b * CONSTANTS.ECLIPSE_DIM_FACTOR
+                };
 
                 for (let i = 0; i < activeCount; i++) {
                     const sat = layer.satData[i];
