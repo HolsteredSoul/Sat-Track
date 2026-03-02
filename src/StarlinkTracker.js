@@ -152,6 +152,7 @@ export class StarlinkTracker {
         // === Data Storage ===
         this.layerData = {};
         this.layerMeshes = {};
+        this.layerFade = {};
         this.allSatIndex = [];
 
         // === Selection State ===
@@ -545,7 +546,10 @@ export class StarlinkTracker {
             if (!el) return;
             const handler = () => {
                 this.layers[key].enabled = el.checked;
-                if (this.layerMeshes[key]) this.layerMeshes[key].visible = el.checked;
+                if (this.layerMeshes[key] && this.layerFade[key]) {
+                    this.layerFade[key].target = el.checked ? 1.0 : 0.0;
+                    if (el.checked) this.layerMeshes[key].visible = true;
+                }
                 if (key === 'iss' && this.issSprite) {
                     this.issSprite.visible = el.checked;
                 }
@@ -1324,6 +1328,7 @@ export class StarlinkTracker {
             if (m.material) m.material.dispose();
         });
         this.layerMeshes = {};
+        this.layerFade = {};
 
         this.layerOrder.forEach((layerKey) => {
             const layer = this.layerData[layerKey];
@@ -1350,14 +1355,18 @@ export class StarlinkTracker {
                 size: this.pointSize,
                 vertexColors: true,
                 transparent: true,
-                alphaTest: 0.5,
+                alphaTest: 0.01,
                 sizeAttenuation: false
             });
 
             const points = new THREE.Points(geometry, material);
             points.frustumCulled = false;
-            points.visible = !!this.layers[layerKey].enabled;
+            const startEnabled = !!this.layers[layerKey].enabled;
+            points.visible = startEnabled;
             points.userData.layerKey = layerKey;
+
+            this.layerFade[layerKey] = { alpha: startEnabled ? 1.0 : 0.0, target: startEnabled ? 1.0 : 0.0 };
+            material.opacity = this.layerFade[layerKey].alpha;
 
             this.layerMeshes[layerKey] = points;
             this.scene.add(points);
@@ -1662,6 +1671,25 @@ export class StarlinkTracker {
     // ========================================================================
 
     /**
+     * Smoothly animates constellation layer opacity when toggled on or off.
+     */
+    updateLayerFades() {
+        for (const key of this.layerOrder) {
+            const fade = this.layerFade?.[key];
+            const mesh = this.layerMeshes[key];
+            if (!fade || !mesh) continue;
+            const diff = fade.target - fade.alpha;
+            if (Math.abs(diff) > 0.005) {
+                fade.alpha += diff * 0.12;
+            } else {
+                fade.alpha = fade.target;
+                if (fade.target === 0) mesh.visible = false;
+            }
+            mesh.material.opacity = fade.alpha;
+        }
+    }
+
+    /**
      * Main animation loop.
      */
     animate() {
@@ -1671,6 +1699,7 @@ export class StarlinkTracker {
             this.controls.update();
             this.updatePhysics();
             this.checkRaycast();
+            this.updateLayerFades();
             this.renderer.render(this.scene, this.camera);
         } catch (error) {
             handleError('Animation frame', error);
@@ -2248,6 +2277,7 @@ export class StarlinkTracker {
         }
 
         this.layerMeshes = {};
+        this.layerFade = {};
         this.layerData = {};
         this.allSatIndex = [];
         this._boundHandlers = {};
