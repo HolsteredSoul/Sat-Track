@@ -69,7 +69,7 @@ export const CONSTANTS = {
     ERROR_TOAST_DURATION_MS: 4000,
 
     // === Eclipse Detection Thresholds ===
-    DARK_COLOR: { r: 0.12, g: 0.14, b: 0.22 },
+    ECLIPSE_DIM_FACTOR: 0.3,
 
     // === Mobile Performance ===
     MOBILE_MAX_SATELLITES: 2000,
