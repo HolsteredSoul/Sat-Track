@@ -1365,7 +1365,10 @@ export class StarlinkTracker {
             points.visible = startEnabled;
             points.userData.layerKey = layerKey;
 
-            this.layerFade[layerKey] = { alpha: startEnabled ? 1.0 : 0.0, target: startEnabled ? 1.0 : 0.0 };
+            this.layerFade[layerKey] = {
+                alpha: startEnabled ? 1.0 : 0.0,
+                target: startEnabled ? 1.0 : 0.0
+            };
             material.opacity = this.layerFade[layerKey].alpha;
 
             this.layerMeshes[layerKey] = points;
