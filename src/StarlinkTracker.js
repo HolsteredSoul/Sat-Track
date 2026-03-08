@@ -1021,30 +1021,32 @@ export class StarlinkTracker {
         this.ui.progress.style.width = '10%';
 
         let completed = 0;
-        for (const key of this.layerOrder) {
-            const tleUrl = this.config.urls.tle[key];
-            this.ui.loaderText.textContent = `Loading ${this.layers[key].label}...`;
-            this.updateStatus(`Loading ${this.layers[key].label}...`, 'status-warn');
+        const total = this.layerOrder.length;
+        this.ui.loaderText.textContent = 'Fetching satellite data...';
 
-            try {
-                const res = await this.fetchTLEWithCache(tleUrl, key, key);
-                if (res && res.text) {
-                    this.processTLEForLayer(res.text, key, res.source);
-                    this.updateBadge(key, res.source, res.cacheAge);
-                } else {
+        await Promise.allSettled(
+            this.layerOrder.map(async (key) => {
+                const tleUrl = this.config.urls.tle[key];
+                try {
+                    const res = await this.fetchTLEWithCache(tleUrl, key, key);
+                    if (res && res.text) {
+                        this.processTLEForLayer(res.text, key, res.source);
+                        this.updateBadge(key, res.source, res.cacheAge);
+                    } else {
+                        this.generateSimulationLayer(key);
+                        this.updateBadge(key, 'sim');
+                    }
+                } catch (error) {
+                    handleError(`Load ${key} data`, error);
                     this.generateSimulationLayer(key);
                     this.updateBadge(key, 'sim');
                 }
-            } catch (error) {
-                handleError(`Load ${key} data`, error);
-                this.generateSimulationLayer(key);
-                this.updateBadge(key, 'sim');
-            }
 
-            completed++;
-            const pct = 10 + Math.round((completed / this.layerOrder.length) * 70);
-            this.ui.progress.style.width = `${pct}%`;
-        }
+                completed++;
+                const pct = 10 + Math.round((completed / total) * 70);
+                this.ui.progress.style.width = `${pct}%`;
+            })
+        );
 
         await this.initTimeSync();
         this.createLayerMeshes();
