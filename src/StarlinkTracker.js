@@ -1112,9 +1112,22 @@ export class StarlinkTracker {
             } catch (e) {
                 handleError('Cache write', e);
             }
+            return result;
         }
 
-        return result;
+        // All network methods failed — use stale cache rather than falling back to simulated orbits
+        try {
+            const stale = localStorage.getItem(cacheKey);
+            if (stale) {
+                const { data, timestamp } = JSON.parse(stale);
+                const age = Date.now() - timestamp;
+                return { text: data, source: 'cached', cacheAge: age };
+            }
+        } catch (e) {
+            handleError('Stale cache fallback', e);
+        }
+
+        return null;
     }
 
     /**
@@ -1187,7 +1200,7 @@ export class StarlinkTracker {
                 const proxyUrl = proxy.template.replace('{url}', encodeURIComponent(tleUrl));
                 const text = await retryWithBackoff(
                     () => attemptFetch(proxyUrl, CONSTANTS.FETCH_TIMEOUT_PROXY),
-                    { maxAttempts: 2, baseDelay: 500 }
+                    { maxAttempts: 1, baseDelay: 0 }
                 );
 
                 let tleData = text;
