@@ -1097,8 +1097,13 @@ export class StarlinkTracker {
             return null;
         }
 
-        // Fetch fresh with retry
-        const result = await this.fetchWithFallback(tleUrl, layerKey);
+        // Fetch fresh — hard cap per layer so the waterfall never blocks indefinitely
+        const result = await Promise.race([
+            this.fetchWithFallback(tleUrl, layerKey),
+            new Promise((resolve) =>
+                setTimeout(() => resolve(null), CONSTANTS.FETCH_TIMEOUT_MAX_TOTAL)
+            )
+        ]);
 
         if (result && result.text) {
             try {
