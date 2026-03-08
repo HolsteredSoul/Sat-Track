@@ -3,6 +3,9 @@
  * @module StarlinkTracker
  */
 
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import * as satellite from 'satellite.js';
 import { CONSTANTS } from './constants.js';
 import {
     computeShadowFactorKm,
@@ -23,8 +26,6 @@ import {
     savePointSizePreference,
     loadPointSizePreference
 } from './helpers.js';
-
-/* global THREE, satellite */
 
 export class StarlinkTracker {
     constructor() {
@@ -231,10 +232,120 @@ export class StarlinkTracker {
         this._tmpVec = new THREE.Vector3();
         this._disposables = [];
 
+        // === Web Worker ===
+        this.worker = null;
+        this.workerBusy = false;
+        this.workerAvailable = false;
+        this._initWorker();
+
         // Apply initial theme
         this.applyTheme(this.currentTheme);
 
         this.init();
+    }
+
+    // ========================================================================
+    // WEB WORKER
+    // ========================================================================
+
+    /** Creates the propagation worker. Falls back to synchronous path on failure. */
+    _initWorker() {
+        try {
+            this.worker = new Worker(
+                new URL('./workers/propagator.worker.js', import.meta.url),
+                { type: 'module' }
+            );
+            this.worker.onmessage = (e) => this._handleWorkerResult(e.data);
+            this.worker.onerror = (err) => {
+                handleError('Propagation worker', err);
+                this.workerAvailable = false;
+            };
+            this.workerAvailable = true;
+        } catch (e) {
+            handleError('Worker init', e);
+            this.workerAvailable = false;
+        }
+    }
+
+    /** Sends satellite data to the worker after TLE loading. */
+    _postWorkerInit() {
+        if (!this.workerAvailable) return;
+        const layers = {};
+        for (const key of this.layerOrder) {
+            const ld = this.layerData[key];
+            if (!ld) continue;
+            const simParams = ld.satData.map((sat) => {
+                if (sat.isSimulated) {
+                    return {
+                        alt: sat.alt,
+                        incDeg: sat.inc * (180 / Math.PI),
+                        raanDeg: sat.raan0 * (180 / Math.PI),
+                        anomalyDeg: sat.anomaly0 * (180 / Math.PI)
+                    };
+                }
+                return null;
+            });
+            const color = this.layers[key].color;
+            layers[key] = {
+                satData: ld.satData,
+                simParams,
+                satNames: ld.satNames,
+                color: { r: color.r, g: color.g, b: color.b }
+            };
+        }
+        this.worker.postMessage({ type: 'init', layers });
+    }
+
+    /** Returns the active Starlink count based on the density slider. */
+    _getStarlinkActiveCount() {
+        const ld = this.layerData.starlink;
+        if (!ld) return 0;
+        return Math.floor(ld.satData.length * (this.ui.slider.value / 100));
+    }
+
+    /** Handles result messages from the propagation worker. */
+    _handleWorkerResult(data) {
+        this.workerBusy = false;
+        if (data.simDateMs) {
+            this.currentSimDate = new Date(data.simDateMs);
+        }
+
+        for (const key of this.layerOrder) {
+            const layer = data.layers[key];
+            if (!layer) continue;
+            const mesh = this.layerMeshes[key];
+            if (!mesh) continue;
+            const posAttr = mesh.geometry.attributes.position;
+            const colAttr = mesh.geometry.attributes.color;
+            posAttr.array = layer.positions;
+            posAttr.count = layer.activeCount;
+            posAttr.needsUpdate = true;
+            colAttr.array = layer.colors;
+            colAttr.count = layer.activeCount;
+            colAttr.needsUpdate = true;
+            mesh.geometry.setDrawRange(0, layer.activeCount);
+        }
+
+        if (this.issSprite) {
+            if (data.issPos && this.layers.iss.enabled) {
+                this.issSprite.position.set(data.issPos.x, data.issPos.y, data.issPos.z);
+                this.issSprite.visible = true;
+                this.issSprite.material.opacity = 1 - data.issShadow * 0.7;
+            } else {
+                this.issSprite.visible = false;
+            }
+        }
+
+        if (data.tooltipData) {
+            const td = data.tooltipData;
+            this.updateTooltip(td.layerKey, td.idx, td.distKm, td.speed, td.shadow, td.isLocked);
+        }
+
+        if (data.stats) {
+            this.ui.count.innerText = data.stats.total;
+            this.ui.lit.innerText = data.stats.lit;
+            this.ui.dark.innerText = data.stats.dark;
+        }
     }
 
     // ========================================================================
@@ -304,7 +415,7 @@ export class StarlinkTracker {
         this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
         document.body.appendChild(this.renderer.domElement);
 
-        this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
+        this.controls = new OrbitControls(this.camera, this.renderer.domElement);
         this.controls.enableDamping = true;
         this.controls.dampingFactor = CONSTANTS.DAMPING_FACTOR;
         this.controls.minDistance = CONSTANTS.CAMERA_MIN_DISTANCE;
@@ -936,6 +1047,7 @@ export class StarlinkTracker {
 
         await this.initTimeSync();
         this.createLayerMeshes();
+        this._postWorkerInit();
         this.rebuildSearchIndex();
         this.restoreFromURL();
 
@@ -1394,7 +1506,7 @@ export class StarlinkTracker {
     // ========================================================================
 
     /**
-     * Updates satellite positions and visual states.
+     * Dispatches physics work to the Web Worker, or falls back to synchronous update.
      */
     updatePhysics() {
         if (!this.referenceTime || !this.isInitialized) return;
@@ -1411,16 +1523,52 @@ export class StarlinkTracker {
             const simDate = new Date(this.referenceTime + elapsed);
             this.currentSimDate = simDate;
 
+            // Sun position update always stays on main thread (drives shaders + UI)
             this.calculateSunPosition(simDate);
 
-            const gmst = satellite.gstime(simDate);
-            const sunVec = this.sunPosition;
-
+            // Orbit path for selected satellite stays on main thread (Three.js geometry)
             if (this.selected && this.ui.checkOrbit.checked) {
                 this.updateOrbitPath(this.selected.layer, this.selected.index, simDate);
             } else {
                 this.orbitPathLine.visible = false;
             }
+
+            if (this.workerAvailable && !this.workerBusy) {
+                this.workerBusy = true;
+                const layerActive = {};
+                for (const key of this.layerOrder) {
+                    layerActive[key] =
+                        !!this.layers[key].enabled &&
+                        (!this.ui.layers[key] || this.ui.layers[key].checked);
+                }
+                this.worker.postMessage({
+                    type: 'update',
+                    simDateMs: simDate.getTime(),
+                    selected: this.selected
+                        ? { layer: this.selected.layer, index: this.selected.index }
+                        : null,
+                    hovered: this.hovered
+                        ? { layer: this.hovered.layer, index: this.hovered.index }
+                        : null,
+                    layerActive,
+                    starlinkActiveCount: this._getStarlinkActiveCount()
+                });
+            } else if (!this.workerAvailable) {
+                this._updatePhysicsSync(simDate);
+            }
+        } catch (error) {
+            handleError('Physics update', error);
+        }
+    }
+
+    /**
+     * Synchronous fallback: updates satellite positions and visual states on the main thread.
+     * Used when the Web Worker is unavailable.
+     */
+    _updatePhysicsSync(simDate) {
+        try {
+            const gmst = satellite.gstime(simDate);
+            const sunVec = this.sunPosition;
 
             let totalActive = 0;
             let lit = 0,
@@ -2196,6 +2344,12 @@ export class StarlinkTracker {
      */
     dispose() {
         this.isDisposed = true;
+
+        if (this.worker) {
+            this.worker.terminate();
+            this.worker = null;
+        }
+        this.workerAvailable = false;
 
         // Window listeners
         const windowEvents = ['resize', 'mouseMove', 'windowClick', 'keyDown', 'online', 'offline'];
