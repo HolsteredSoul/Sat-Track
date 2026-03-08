@@ -44,6 +44,7 @@ export const CONSTANTS = {
     FETCH_TIMEOUT_DIRECT: 5000,
     FETCH_TIMEOUT_PROXY: 8000,
     FETCH_TIMEOUT_TIME_API: 5000,
+    FETCH_TIMEOUT_MAX_TOTAL: 8000,
 
     // === Retry Configuration ===
     RETRY_MAX_ATTEMPTS: 3,
@@ -112,12 +113,6 @@ export const CONSTANTS = {
     // === CORS Proxies ===
     CORS_PROXIES: [
         { name: 'corsproxy.io', template: 'https://corsproxy.io/?{url}', parseJson: false },
-        {
-            name: 'allorigins',
-            template: 'https://api.allorigins.win/get?url={url}',
-            parseJson: true,
-            field: 'contents'
-        },
         {
             name: 'codetabs',
             template: 'https://api.codetabs.com/v1/proxy?quest={url}',
