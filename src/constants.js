@@ -41,8 +41,8 @@ export const CONSTANTS = {
     // === Network & Caching ===
     CACHE_TTL_MS: 3600000,
     CACHE_STALE_WARNING_MS: 1800000,
-    FETCH_TIMEOUT_DIRECT: 8000,
-    FETCH_TIMEOUT_PROXY: 12000,
+    FETCH_TIMEOUT_DIRECT: 5000,
+    FETCH_TIMEOUT_PROXY: 8000,
     FETCH_TIMEOUT_TIME_API: 5000,
 
     // === Retry Configuration ===
