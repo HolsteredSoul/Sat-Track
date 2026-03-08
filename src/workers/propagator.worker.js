@@ -173,7 +173,11 @@ function handleUpdate(msg) {
             // ISS detection (first satellite in iss layer that matches naming)
             if (layerKey === 'iss' && issPos === null) {
                 const satName = (wLayer.satNames[i] || '').toUpperCase();
-                if (satName.includes('ISS (ZARYA)') || satName === 'ISS' || satName.includes('ISS (')) {
+                if (
+                    satName.includes('ISS (ZARYA)') ||
+                    satName === 'ISS' ||
+                    satName.includes('ISS (')
+                ) {
                     issPos = { x, y, z };
                     issShadow = shadow;
                 }
