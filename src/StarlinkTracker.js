@@ -320,6 +320,7 @@ export class StarlinkTracker {
             posAttr.array = layer.positions;
             posAttr.count = layer.activeCount;
             posAttr.needsUpdate = true;
+            mesh.geometry.boundingSphere = null; // force recompute from real positions on next raycast
             colAttr.array = layer.colors;
             colAttr.count = layer.activeCount;
             colAttr.needsUpdate = true;
