@@ -251,10 +251,9 @@ export class StarlinkTracker {
     /** Creates the propagation worker. Falls back to synchronous path on failure. */
     _initWorker() {
         try {
-            this.worker = new Worker(
-                new URL('./workers/propagator.worker.js', import.meta.url),
-                { type: 'module' }
-            );
+            this.worker = new Worker(new URL('./workers/propagator.worker.js', import.meta.url), {
+                type: 'module'
+            });
             this.worker.onmessage = (e) => this._handleWorkerResult(e.data);
             this.worker.onerror = (err) => {
                 handleError('Propagation worker', err);
