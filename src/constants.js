@@ -41,8 +41,8 @@ export const CONSTANTS = {
     // === Network & Caching ===
     CACHE_TTL_MS: 3600000,
     CACHE_STALE_WARNING_MS: 1800000,
-    FETCH_TIMEOUT_DIRECT: 5000,
-    FETCH_TIMEOUT_PROXY: 8000,
+    FETCH_TIMEOUT_DIRECT: 10000,
+    FETCH_TIMEOUT_PROXY: 10000,
     FETCH_TIMEOUT_TIME_API: 5000,
     FETCH_TIMEOUT_MAX_TOTAL: 30000,
 
@@ -111,19 +111,9 @@ export const CONSTANTS = {
     },
 
     // === CORS Proxies ===
-    CORS_PROXIES: [
-        { name: 'corsproxy.io', template: 'https://corsproxy.io/?url={url}', parseJson: false },
-        {
-            name: 'allorigins',
-            template: 'https://api.allorigins.win/raw?url={url}',
-            parseJson: false
-        },
-        {
-            name: 'codetabs',
-            template: 'https://api.codetabs.com/v1/proxy?quest={url}',
-            parseJson: false
-        }
-    ],
+    // CelesTrak supports CORS natively (Access-Control-Allow-Origin: *),
+    // so direct browser fetches work. Proxy list kept as emergency fallback.
+    CORS_PROXIES: [],
 
     // === Simulation Shell Parameters ===
     SIM_SHELLS: {

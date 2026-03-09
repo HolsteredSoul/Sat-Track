@@ -1168,11 +1168,11 @@ export class StarlinkTracker {
             return lines.join('\n');
         };
 
-        // 1. Direct fetch with retry
+        // 1. Direct fetch with retry (CelesTrak supports CORS natively)
         try {
             const text = await retryWithBackoff(
                 () => attemptFetch(tleUrl, CONSTANTS.FETCH_TIMEOUT_DIRECT),
-                { maxAttempts: 2, baseDelay: 500 }
+                { maxAttempts: 3, baseDelay: 1000 }
             );
             if (text && text.includes('1 ')) {
                 return { text, source: 'live' };
@@ -1187,7 +1187,7 @@ export class StarlinkTracker {
             if (jsonUrl) {
                 const jsonText = await retryWithBackoff(
                     () => attemptFetch(jsonUrl, CONSTANTS.FETCH_TIMEOUT_DIRECT),
-                    { maxAttempts: 2, baseDelay: 500 }
+                    { maxAttempts: 3, baseDelay: 1000 }
                 );
                 const jsonData = JSON.parse(jsonText);
                 if (Array.isArray(jsonData) && jsonData.length > 0) {
