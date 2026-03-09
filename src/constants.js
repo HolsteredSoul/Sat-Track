@@ -111,9 +111,21 @@ export const CONSTANTS = {
     },
 
     // === CORS Proxies ===
-    // CelesTrak supports CORS natively (Access-Control-Allow-Origin: *),
-    // so direct browser fetches work. Proxy list kept as emergency fallback.
-    CORS_PROXIES: [],
+    // Used as fallback when direct CelesTrak access is blocked (firewall, region, etc.).
+    // CelesTrak also supports CORS natively so direct fetch is always tried first.
+    CORS_PROXIES: [
+        { name: 'corsproxy.io', template: 'https://corsproxy.io/?url={url}', parseJson: false },
+        {
+            name: 'allorigins',
+            template: 'https://api.allorigins.win/raw?url={url}',
+            parseJson: false
+        },
+        {
+            name: 'codetabs',
+            template: 'https://api.codetabs.com/v1/proxy?quest={url}',
+            parseJson: false
+        }
+    ],
 
     // === Simulation Shell Parameters ===
     SIM_SHELLS: {
