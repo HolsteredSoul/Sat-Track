@@ -536,9 +536,10 @@
         
         // === Network & Caching ===
         CACHE_TTL_MS: 3600000,                    // TLE cache time-to-live: 1 hour (3600000ms)
-        FETCH_TIMEOUT_DIRECT: 8000,               // Timeout for direct CelesTrak fetch: 8 seconds
-        FETCH_TIMEOUT_PROXY: 12000,               // Timeout for proxy fetch attempts: 12 seconds
+        FETCH_TIMEOUT_DIRECT: 10000,              // Timeout for direct CelesTrak fetch: 10 seconds
+        FETCH_TIMEOUT_PROXY: 10000,               // Timeout for proxy fetch attempts: 10 seconds
         FETCH_TIMEOUT_TIME_API: 5000,             // Timeout for time sync API: 5 seconds
+        FETCH_TIMEOUT_MAX_TOTAL: 30000,           // Hard cap per layer so no layer blocks indefinitely
         
         // === Camera & Controls ===
         CAMERA_FOV: 45,                           // Camera field of view in degrees
@@ -1526,31 +1527,32 @@
             this.ui.progress.style.width = '10%';
 
             let completed = 0;
-            for (const key of this.layerOrder) {
-                const tleUrl = this.config.urls.tle[key];
-                this.ui.loaderText.textContent = `Loading ${this.layers[key].label}...`;
-                this.updateStatus(`Loading ${this.layers[key].label}...`, 'status-warn');
+            const total = this.layerOrder.length;
+            this.ui.loaderText.textContent = 'Fetching satellite data...';
 
-                try {
-                    const res = await this.fetchTLEWithCache(tleUrl, key, key);
-                    
-                    if (res && res.text) {
-                        this.processTLEForLayer(res.text, key, res.source);
-                        this.updateBadge(key, res.source);
-                    } else {
+            await Promise.allSettled(
+                this.layerOrder.map(async (key) => {
+                    const tleUrl = this.config.urls.tle[key];
+                    try {
+                        const res = await this.fetchTLEWithCache(tleUrl, key, key);
+                        if (res && res.text) {
+                            this.processTLEForLayer(res.text, key, res.source);
+                            this.updateBadge(key, res.source);
+                        } else {
+                            this.generateSimulationLayer(key);
+                            this.updateBadge(key, 'sim');
+                        }
+                    } catch (error) {
+                        handleError(`Load ${key} data`, error);
                         this.generateSimulationLayer(key);
                         this.updateBadge(key, 'sim');
                     }
-                } catch (error) {
-                    handleError(`Load ${key} data`, error);
-                    this.generateSimulationLayer(key);
-                    this.updateBadge(key, 'sim');
-                }
 
-                completed++;
-                const pct = 10 + Math.round((completed / this.layerOrder.length) * 70);
-                this.ui.progress.style.width = `${pct}%`;
-            }
+                    completed++;
+                    const pct = 10 + Math.round((completed / total) * 70);
+                    this.ui.progress.style.width = `${pct}%`;
+                })
+            );
 
             await this.initTimeSync();
 
@@ -1603,9 +1605,14 @@
                 return null;
             }
 
-            // Fetch fresh data
-            const result = await this.fetchWithFallback(tleUrl, layerKey);
-            
+            // Fetch fresh — hard cap so no layer blocks indefinitely
+            const result = await Promise.race([
+                this.fetchWithFallback(tleUrl, layerKey),
+                new Promise((resolve) =>
+                    setTimeout(() => resolve(null), CONSTANTS.FETCH_TIMEOUT_MAX_TOTAL)
+                )
+            ]);
+
             // Update cache
             if (result && result.text) {
                 try {
@@ -1616,9 +1623,21 @@
                 } catch (e) {
                     handleError('Cache write', e);
                 }
+                return result;
             }
 
-            return result;
+            // All network methods failed — use stale cache instead of simulated orbits
+            try {
+                const stale = localStorage.getItem(cacheKey);
+                if (stale) {
+                    const { data, timestamp } = JSON.parse(stale);
+                    return { text: data, source: 'cached', cacheAge: Date.now() - timestamp };
+                }
+            } catch (e) {
+                handleError('Stale cache fallback', e);
+            }
+
+            return null;
         }
 
         /**
@@ -1656,63 +1675,46 @@
                 return lines.join('\n');
             };
 
-            // 1. Try direct fetch
+            // 1. Direct TLE fetch with retry (CelesTrak supports CORS natively)
+            // 2 attempts keeps worst-case ~21s so JSON format can still run inside the 30s cap.
             try {
-                console.log(`[${layerKey}] Trying direct fetch...`);
-                const text = await attemptFetch(tleUrl, CONSTANTS.FETCH_TIMEOUT_DIRECT);
-                if (text && text.includes('1 ')) {
-                    console.log(`[${layerKey}] Direct fetch succeeded!`);
-                    return { text, source: 'live' };
+                let lastErr;
+                for (let attempt = 0; attempt < 2; attempt++) {
+                    try {
+                        const text = await attemptFetch(tleUrl, CONSTANTS.FETCH_TIMEOUT_DIRECT);
+                        if (text && text.includes('1 ')) return { text, source: 'live' };
+                    } catch (e) {
+                        lastErr = e;
+                        if (attempt < 1) await new Promise((r) => setTimeout(r, 1000));
+                    }
                 }
+                if (lastErr) console.log(`[${layerKey}] Direct fetch failed: ${lastErr.message}`);
             } catch (e) {
-                console.log(`[${layerKey}] Direct fetch failed: ${e.message}`);
+                console.log(`[${layerKey}] Direct fetch error: ${e.message}`);
             }
 
-            // 2. Try JSON format
+            // 2. JSON format — different response format, independent chance of success
             try {
                 const jsonUrl = this.config.urls.tleJson[layerKey];
                 if (jsonUrl) {
-                    console.log(`[${layerKey}] Trying JSON format...`);
-                    const jsonText = await attemptFetch(jsonUrl, CONSTANTS.FETCH_TIMEOUT_DIRECT);
-                    const jsonData = JSON.parse(jsonText);
-                    if (Array.isArray(jsonData) && jsonData.length > 0) {
-                        const tleText = jsonToTLE(jsonData);
-                        if (tleText && tleText.includes('1 ')) {
-                            console.log(`[${layerKey}] JSON format succeeded!`);
-                            return { text: tleText, source: 'live' };
+                    let lastErr;
+                    for (let attempt = 0; attempt < 2; attempt++) {
+                        try {
+                            const jsonText = await attemptFetch(jsonUrl, CONSTANTS.FETCH_TIMEOUT_DIRECT);
+                            const jsonData = JSON.parse(jsonText);
+                            if (Array.isArray(jsonData) && jsonData.length > 0) {
+                                const tleText = jsonToTLE(jsonData);
+                                if (tleText && tleText.includes('1 ')) return { text: tleText, source: 'live' };
+                            }
+                        } catch (e) {
+                            lastErr = e;
+                            if (attempt < 1) await new Promise((r) => setTimeout(r, 1000));
                         }
                     }
+                    if (lastErr) console.log(`[${layerKey}] JSON format failed: ${lastErr.message}`);
                 }
             } catch (e) {
-                console.log(`[${layerKey}] JSON format failed: ${e.message}`);
-            }
-
-            // 3. Try CORS proxies
-            const proxies = [
-                { name: 'corsproxy.io', url: `https://corsproxy.io/?${encodeURIComponent(tleUrl)}`, parseJson: false },
-                { name: 'allorigins', url: `https://api.allorigins.win/get?url=${encodeURIComponent(tleUrl)}`, parseJson: true, field: 'contents' },
-                { name: 'codetabs', url: `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(tleUrl)}`, parseJson: false },
-            ];
-
-            for (const proxy of proxies) {
-                try {
-                    console.log(`[${layerKey}] Trying ${proxy.name}...`);
-                    const text = await attemptFetch(proxy.url, CONSTANTS.FETCH_TIMEOUT_PROXY);
-                    
-                    let tleData = text;
-                    if (proxy.parseJson) {
-                        const json = JSON.parse(text);
-                        tleData = json[proxy.field] || json.body || json.data;
-                    }
-                    
-                    if (tleData && tleData.includes('1 ')) {
-                        console.log(`[${layerKey}] ${proxy.name} succeeded!`);
-                        return { text: tleData, source: 'live' };
-                    }
-                } catch (e) {
-                    console.log(`[${layerKey}] ${proxy.name} failed: ${e.message}`);
-                    continue;
-                }
+                console.log(`[${layerKey}] JSON format error: ${e.message}`);
             }
 
             console.error(`[${layerKey}] All fetch methods failed`);
