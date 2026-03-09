@@ -251,10 +251,9 @@ export class StarlinkTracker {
     /** Creates the propagation worker. Falls back to synchronous path on failure. */
     _initWorker() {
         try {
-            this.worker = new Worker(
-                new URL('./workers/propagator.worker.js', import.meta.url),
-                { type: 'module' }
-            );
+            this.worker = new Worker(new URL('./workers/propagator.worker.js', import.meta.url), {
+                type: 'module'
+            });
             this.worker.onmessage = (e) => this._handleWorkerResult(e.data);
             this.worker.onerror = (err) => {
                 handleError('Propagation worker', err);
@@ -1021,30 +1020,32 @@ export class StarlinkTracker {
         this.ui.progress.style.width = '10%';
 
         let completed = 0;
-        for (const key of this.layerOrder) {
-            const tleUrl = this.config.urls.tle[key];
-            this.ui.loaderText.textContent = `Loading ${this.layers[key].label}...`;
-            this.updateStatus(`Loading ${this.layers[key].label}...`, 'status-warn');
+        const total = this.layerOrder.length;
+        this.ui.loaderText.textContent = 'Fetching satellite data...';
 
-            try {
-                const res = await this.fetchTLEWithCache(tleUrl, key, key);
-                if (res && res.text) {
-                    this.processTLEForLayer(res.text, key, res.source);
-                    this.updateBadge(key, res.source, res.cacheAge);
-                } else {
+        await Promise.allSettled(
+            this.layerOrder.map(async (key) => {
+                const tleUrl = this.config.urls.tle[key];
+                try {
+                    const res = await this.fetchTLEWithCache(tleUrl, key, key);
+                    if (res && res.text) {
+                        this.processTLEForLayer(res.text, key, res.source);
+                        this.updateBadge(key, res.source, res.cacheAge);
+                    } else {
+                        this.generateSimulationLayer(key);
+                        this.updateBadge(key, 'sim');
+                    }
+                } catch (error) {
+                    handleError(`Load ${key} data`, error);
                     this.generateSimulationLayer(key);
                     this.updateBadge(key, 'sim');
                 }
-            } catch (error) {
-                handleError(`Load ${key} data`, error);
-                this.generateSimulationLayer(key);
-                this.updateBadge(key, 'sim');
-            }
 
-            completed++;
-            const pct = 10 + Math.round((completed / this.layerOrder.length) * 70);
-            this.ui.progress.style.width = `${pct}%`;
-        }
+                completed++;
+                const pct = 10 + Math.round((completed / total) * 70);
+                this.ui.progress.style.width = `${pct}%`;
+            })
+        );
 
         await this.initTimeSync();
         this.createLayerMeshes();
@@ -1167,11 +1168,17 @@ export class StarlinkTracker {
             return lines.join('\n');
         };
 
-        // 1. Direct fetch with retry
+        // 1. Direct fetch with retry (CelesTrak supports CORS natively)
+        // maxAttempts:2 keeps worst-case under 21s so JSON format can still run
+        // within the FETCH_TIMEOUT_MAX_TOTAL:30s race window.
         try {
             const text = await retryWithBackoff(
                 () => attemptFetch(tleUrl, CONSTANTS.FETCH_TIMEOUT_DIRECT),
-                { maxAttempts: 2, baseDelay: 500 }
+                { maxAttempts: 2, baseDelay: 1000 }
+        try {
+            const text = await retryWithBackoff(
+                () => attemptFetch(tleUrl, CONSTANTS.FETCH_TIMEOUT_DIRECT),
+                { maxAttempts: 3, baseDelay: 1000 }
             );
             if (text && text.includes('1 ')) {
                 return { text, source: 'live' };
@@ -1180,13 +1187,13 @@ export class StarlinkTracker {
             console.log(`[${layerKey}] Direct fetch failed: ${e.message}`);
         }
 
-        // 2. JSON format with retry
+        // 2. JSON format with retry — different endpoint, independent chance of success
         try {
             const jsonUrl = this.config.urls.tleJson[layerKey];
             if (jsonUrl) {
                 const jsonText = await retryWithBackoff(
                     () => attemptFetch(jsonUrl, CONSTANTS.FETCH_TIMEOUT_DIRECT),
-                    { maxAttempts: 2, baseDelay: 500 }
+                    { maxAttempts: 2, baseDelay: 1000 }
                 );
                 const jsonData = JSON.parse(jsonText);
                 if (Array.isArray(jsonData) && jsonData.length > 0) {
