@@ -1169,6 +1169,12 @@ export class StarlinkTracker {
         };
 
         // 1. Direct fetch with retry (CelesTrak supports CORS natively)
+        // maxAttempts:2 keeps worst-case under 21s so JSON format can still run
+        // within the FETCH_TIMEOUT_MAX_TOTAL:30s race window.
+        try {
+            const text = await retryWithBackoff(
+                () => attemptFetch(tleUrl, CONSTANTS.FETCH_TIMEOUT_DIRECT),
+                { maxAttempts: 2, baseDelay: 1000 }
         try {
             const text = await retryWithBackoff(
                 () => attemptFetch(tleUrl, CONSTANTS.FETCH_TIMEOUT_DIRECT),
@@ -1181,13 +1187,13 @@ export class StarlinkTracker {
             console.log(`[${layerKey}] Direct fetch failed: ${e.message}`);
         }
 
-        // 2. JSON format with retry
+        // 2. JSON format with retry — different endpoint, independent chance of success
         try {
             const jsonUrl = this.config.urls.tleJson[layerKey];
             if (jsonUrl) {
                 const jsonText = await retryWithBackoff(
                     () => attemptFetch(jsonUrl, CONSTANTS.FETCH_TIMEOUT_DIRECT),
-                    { maxAttempts: 3, baseDelay: 1000 }
+                    { maxAttempts: 2, baseDelay: 1000 }
                 );
                 const jsonData = JSON.parse(jsonText);
                 if (Array.isArray(jsonData) && jsonData.length > 0) {
