@@ -1175,10 +1175,6 @@ export class StarlinkTracker {
             const text = await retryWithBackoff(
                 () => attemptFetch(tleUrl, CONSTANTS.FETCH_TIMEOUT_DIRECT),
                 { maxAttempts: 2, baseDelay: 1000 }
-        try {
-            const text = await retryWithBackoff(
-                () => attemptFetch(tleUrl, CONSTANTS.FETCH_TIMEOUT_DIRECT),
-                { maxAttempts: 3, baseDelay: 1000 }
             );
             if (text && text.includes('1 ')) {
                 return { text, source: 'live' };

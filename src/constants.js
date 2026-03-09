@@ -41,8 +41,8 @@ export const CONSTANTS = {
     // === Network & Caching ===
     CACHE_TTL_MS: 3600000,
     CACHE_STALE_WARNING_MS: 1800000,
-    FETCH_TIMEOUT_DIRECT: 5000,
-    FETCH_TIMEOUT_PROXY: 8000,
+    FETCH_TIMEOUT_DIRECT: 10000,
+    FETCH_TIMEOUT_PROXY: 10000,
     FETCH_TIMEOUT_TIME_API: 5000,
     FETCH_TIMEOUT_MAX_TOTAL: 8000,
 
@@ -111,6 +111,8 @@ export const CONSTANTS = {
     },
 
     // === CORS Proxies ===
+    // Used as fallback when direct CelesTrak access is blocked (firewall, region, etc.).
+    // CelesTrak also supports CORS natively so direct fetch is always tried first.
     CORS_PROXIES: [
         { name: 'corsproxy.io', template: 'https://corsproxy.io/?{url}', parseJson: false },
         {

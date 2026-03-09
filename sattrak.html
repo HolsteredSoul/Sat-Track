@@ -1717,6 +1717,22 @@
                 console.log(`[${layerKey}] JSON format error: ${e.message}`);
             }
 
+            // 3. CORS proxies — fallback for users who cannot reach CelesTrak directly
+            const proxies = [
+                { name: 'corsproxy.io', url: `https://corsproxy.io/?url=${encodeURIComponent(tleUrl)}`, parseJson: false },
+                { name: 'allorigins', url: `https://api.allorigins.win/raw?url=${encodeURIComponent(tleUrl)}`, parseJson: false },
+                { name: 'codetabs', url: `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(tleUrl)}`, parseJson: false }
+            ];
+
+            for (const proxy of proxies) {
+                try {
+                    const text = await attemptFetch(proxy.url, CONSTANTS.FETCH_TIMEOUT_PROXY);
+                    if (text && text.includes('1 ')) return { text, source: 'live' };
+                } catch (e) {
+                    console.log(`[${layerKey}] ${proxy.name} failed: ${e.message}`);
+                }
+            }
+
             console.error(`[${layerKey}] All fetch methods failed`);
             return null;
         }
