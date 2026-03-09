@@ -44,7 +44,7 @@ export const CONSTANTS = {
     FETCH_TIMEOUT_DIRECT: 10000,
     FETCH_TIMEOUT_PROXY: 10000,
     FETCH_TIMEOUT_TIME_API: 5000,
-    FETCH_TIMEOUT_MAX_TOTAL: 30000,
+    FETCH_TIMEOUT_MAX_TOTAL: 8000,
 
     // === Retry Configuration ===
     RETRY_MAX_ATTEMPTS: 3,
@@ -114,12 +114,7 @@ export const CONSTANTS = {
     // Used as fallback when direct CelesTrak access is blocked (firewall, region, etc.).
     // CelesTrak also supports CORS natively so direct fetch is always tried first.
     CORS_PROXIES: [
-        { name: 'corsproxy.io', template: 'https://corsproxy.io/?url={url}', parseJson: false },
-        {
-            name: 'allorigins',
-            template: 'https://api.allorigins.win/raw?url={url}',
-            parseJson: false
-        },
+        { name: 'corsproxy.io', template: 'https://corsproxy.io/?{url}', parseJson: false },
         {
             name: 'codetabs',
             template: 'https://api.codetabs.com/v1/proxy?quest={url}',
