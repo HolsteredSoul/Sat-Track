@@ -284,6 +284,82 @@ export function calculateElevation(observer, satECI, gmst) {
 }
 
 /**
+ * Calculates the azimuth angle (clockwise from true north) of a satellite as seen
+ * from an observer. Uses ECI frame with the same coordinate convention as calculateElevation.
+ * @param {{ lat: number, lon: number, alt: number }} observer - Geodetic position (lat/lon radians)
+ * @param {{ x: number, y: number, z: number }} satECI - Satellite ECI position in km
+ * @param {number} gmst - Greenwich Mean Sidereal Time in radians
+ * @returns {number} Azimuth in degrees (0 = N, 90 = E, 180 = S, 270 = W)
+ */
+export function calculateAzimuth(observer, satECI, gmst) {
+    const Re = CONSTANTS.EARTH_RADIUS_KM;
+    const lat = observer.lat;
+    const lon = observer.lon + gmst; // geographic → ECI
+
+    // Observer ECI position
+    const obsX = Re * Math.cos(lat) * Math.cos(lon);
+    const obsY = Re * Math.cos(lat) * Math.sin(lon);
+    const obsZ = Re * Math.sin(lat);
+
+    // Range vector (observer → satellite)
+    const rx = satECI.x - obsX;
+    const ry = satECI.y - obsY;
+    const rz = satECI.z - obsZ;
+
+    // Up unit vector (radial from Earth centre)
+    const upLen = Math.sqrt(obsX * obsX + obsY * obsY + obsZ * obsZ);
+    const ux = obsX / upLen;
+    const uy = obsY / upLen;
+    const uz = obsZ / upLen;
+
+    // East unit vector: Up cross Z-pole (0,0,1) → simplifies to (uy, -ux, 0)
+    let ex = uy;
+    let ey = -ux;
+    const eLen = Math.sqrt(ex * ex + ey * ey);
+    if (eLen < 1e-10) return 0; // azimuth undefined at poles
+    ex /= eLen;
+    ey /= eLen;
+
+    // North unit vector: East cross Up
+    const nx = ey * uz - 0 * uy; // ez = 0
+    const ny = 0 * ux - ex * uz;
+    const nz = ex * uy - ey * ux;
+
+    // Project range onto North and East
+    const rNorth = rx * nx + ry * ny + rz * nz;
+    const rEast = rx * ex + ry * ey; // rz * ez = 0
+
+    return (Math.atan2(rEast, rNorth) * (180 / Math.PI) + 360) % 360;
+}
+
+/**
+ * Converts an azimuth angle in degrees to a 16-point cardinal direction string.
+ * @param {number} deg - Azimuth in degrees (0-360)
+ * @returns {string} Cardinal direction (e.g. "NNE", "SW")
+ */
+export function azimuthToCardinal(deg) {
+    const dirs = [
+        'N',
+        'NNE',
+        'NE',
+        'ENE',
+        'E',
+        'ESE',
+        'SE',
+        'SSE',
+        'S',
+        'SSW',
+        'SW',
+        'WSW',
+        'W',
+        'WNW',
+        'NW',
+        'NNW'
+    ];
+    return dirs[Math.round((((deg % 360) + 360) % 360) / 22.5) % 16];
+}
+
+/**
  * Detects if the current device is mobile based on screen size and touch support.
  * @returns {boolean} True if mobile device detected
  */
