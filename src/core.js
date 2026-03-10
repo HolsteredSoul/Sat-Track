@@ -329,7 +329,7 @@ export function calculateAzimuth(observer, satECI, gmst) {
     const rNorth = rx * nx + ry * ny + rz * nz;
     const rEast = rx * ex + ry * ey; // rz * ez = 0
 
-    return ((Math.atan2(rEast, rNorth) * (180 / Math.PI)) + 360) % 360;
+    return (Math.atan2(rEast, rNorth) * (180 / Math.PI) + 360) % 360;
 }
 
 /**
@@ -338,9 +338,25 @@ export function calculateAzimuth(observer, satECI, gmst) {
  * @returns {string} Cardinal direction (e.g. "NNE", "SW")
  */
 export function azimuthToCardinal(deg) {
-    const dirs = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE',
-                  'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
-    return dirs[Math.round(((deg % 360) + 360) % 360 / 22.5) % 16];
+    const dirs = [
+        'N',
+        'NNE',
+        'NE',
+        'ENE',
+        'E',
+        'ESE',
+        'SE',
+        'SSE',
+        'S',
+        'SSW',
+        'SW',
+        'WSW',
+        'W',
+        'WNW',
+        'NW',
+        'NNW'
+    ];
+    return dirs[Math.round((((deg % 360) + 360) % 360) / 22.5) % 16];
 }
 
 /**

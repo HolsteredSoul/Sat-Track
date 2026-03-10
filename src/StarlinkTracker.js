@@ -874,7 +874,10 @@ export class StarlinkTracker {
                 }
             };
             manualToggle.addEventListener('click', this._boundHandlers.manualToggle);
-            this._actionButtons.push({ el: manualToggle, handler: this._boundHandlers.manualToggle });
+            this._actionButtons.push({
+                el: manualToggle,
+                handler: this._boundHandlers.manualToggle
+            });
         }
         bindBtn('btn-manual-location', () => {
             const lat = parseFloat(this.ui.inputLat?.value);
@@ -896,7 +899,8 @@ export class StarlinkTracker {
         // Visible count scope toggle
         if (this.ui.visibleScopeBtn) {
             this._boundHandlers.scopeToggle = () => {
-                this._visibleCountScope = this._visibleCountScope === 'starlink' ? 'all' : 'starlink';
+                this._visibleCountScope =
+                    this._visibleCountScope === 'starlink' ? 'all' : 'starlink';
                 if (this.ui.visibleScopeBtn) {
                     this.ui.visibleScopeBtn.textContent =
                         this._visibleCountScope === 'starlink' ? 'Starlink \u25BE' : 'All \u25BE';
@@ -905,7 +909,10 @@ export class StarlinkTracker {
                 if (this.currentSimDate) this._updateVisibleCount(this.currentSimDate);
             };
             this.ui.visibleScopeBtn.addEventListener('click', this._boundHandlers.scopeToggle);
-            this._actionButtons.push({ el: this.ui.visibleScopeBtn, handler: this._boundHandlers.scopeToggle });
+            this._actionButtons.push({
+                el: this.ui.visibleScopeBtn,
+                handler: this._boundHandlers.scopeToggle
+            });
         }
     }
 
@@ -2064,10 +2071,7 @@ export class StarlinkTracker {
 
         navigator.geolocation.getCurrentPosition(
             (position) => {
-                this._applyObserverLocation(
-                    position.coords.latitude,
-                    position.coords.longitude
-                );
+                this._applyObserverLocation(position.coords.latitude, position.coords.longitude);
             },
             (error) => {
                 handleError('Geolocation', error, true);
@@ -2259,7 +2263,9 @@ export class StarlinkTracker {
                         inPass = false;
                         if (passes.length >= CONSTANTS.PASS_MAX_COUNT) break;
                     }
-                } catch (e) { /* skip step */ }
+                } catch (e) {
+                    /* skip step */
+                }
             }
             // capture pass still in progress at loop end
             if (inPass && passes.length < CONSTANTS.PASS_MAX_COUNT) {
@@ -2294,27 +2300,28 @@ export class StarlinkTracker {
     _renderPassTable(passes, now) {
         if (!this.ui.passTableContainer) return;
         if (passes.length === 0) {
-            this.ui.passTableContainer.innerHTML =
-                `<div style="font-size:11px; color:var(--ui-subtext); padding:6px 0;">No passes in next ${CONSTANTS.PASS_PREDICTION_HOURS}h.</div>`;
+            this.ui.passTableContainer.innerHTML = `<div style="font-size:11px; color:var(--ui-subtext); padding:6px 0;">No passes in next ${CONSTANTS.PASS_PREDICTION_HOURS}h.</div>`;
             return;
         }
         const todayStr = now.toISOString().slice(0, 10);
-        const rows = passes.map((p) => {
-            const aosStr = p.aos.toISOString();
-            const aosDate = aosStr.slice(0, 10);
-            const aosTime = aosStr.slice(11, 19);
-            const timeLabel = aosDate !== todayStr ? `${aosDate.slice(5)} ${aosTime}` : aosTime;
-            const mins = Math.floor(p.durationSec / 60);
-            const secs = p.durationSec % 60;
-            const dur = `${mins}m ${secs}s`;
-            return `<tr>
+        const rows = passes
+            .map((p) => {
+                const aosStr = p.aos.toISOString();
+                const aosDate = aosStr.slice(0, 10);
+                const aosTime = aosStr.slice(11, 19);
+                const timeLabel = aosDate !== todayStr ? `${aosDate.slice(5)} ${aosTime}` : aosTime;
+                const mins = Math.floor(p.durationSec / 60);
+                const secs = p.durationSec % 60;
+                const dur = `${mins}m ${secs}s`;
+                return `<tr>
                 <td>${timeLabel} UTC</td>
                 <td>${dur}</td>
                 <td>${p.maxEl.toFixed(1)}&deg;</td>
                 <td>${p.maxElAz.toFixed(0)}&deg; ${p.maxElAzCard}</td>
                 <td>${p.aosAzCard}</td>
             </tr>`;
-        }).join('');
+            })
+            .join('');
         this.ui.passTableContainer.innerHTML = `
             <table>
                 <thead><tr>
@@ -2345,10 +2352,14 @@ export class StarlinkTracker {
         const observer = { lat: obsLat, lon: obsLon, alt: 0 };
 
         let count = 0;
-        const scopeKeys = this._visibleCountScope === 'starlink'
-            ? ['starlink']
-            : this.layerOrder.filter((k) => this.layers[k]?.enabled &&
-                (!this.ui.layers[k] || this.ui.layers[k].checked));
+        const scopeKeys =
+            this._visibleCountScope === 'starlink'
+                ? ['starlink']
+                : this.layerOrder.filter(
+                      (k) =>
+                          this.layers[k]?.enabled &&
+                          (!this.ui.layers[k] || this.ui.layers[k].checked)
+                  );
 
         for (const layerKey of scopeKeys) {
             const layer = this.layerData[layerKey];
@@ -2359,7 +2370,9 @@ export class StarlinkTracker {
                     const pv = satellite.propagate(sat, simDate);
                     if (!pv.position || isNaN(pv.position.x)) continue;
                     if (calculateElevation(observer, pv.position, gmst) >= minEl) count++;
-                } catch (e) { /* skip */ }
+                } catch (e) {
+                    /* skip */
+                }
             }
         }
 
