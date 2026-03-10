@@ -655,6 +655,11 @@
             <label for="min-el-slider">Min elevation: <span id="min-el-display">10</span>&deg;</label>
             <input type="range" id="min-el-slider" min="0" max="90" value="10">
             <div class="range-info"><span>0&deg; (horizon)</span><span>90&deg; (zenith)</span></div>
+            <div style="font-size:11px; color:var(--ui-subtext); margin-top:5px; line-height:1.4;">
+                Minimum angle above the horizon a satellite must reach to count as a pass.
+                10&deg; is a practical default — trees and buildings typically block lower angles.
+                Raise it to filter for higher, brighter passes only.
+            </div>
         </div>
 
         <div id="selected-pass-panel" style="display:none;">
