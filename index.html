@@ -443,7 +443,8 @@
         #pass-table-container tr:hover td { background: var(--ui-item-bg); }
 
         /* === Manual Location Form === */
-        #manual-location-form input[type="number"] {
+        #manual-location-form input[type="number"],
+        #manual-location-form input[type="text"] {
             width: 100%; box-sizing: border-box;
             padding: 7px 8px; border-radius: 8px;
             border: 1px solid var(--ui-border);
@@ -772,14 +773,11 @@
     <button id="btn-manual-toggle" aria-label="Enter location manually">Enter coordinates manually</button>
     <div id="manual-location-form" style="display:none; margin-top:8px;">
         <input type="text" id="input-dms"
-               placeholder="Paste DMS e.g. 32°03′17.22″S 115°52′28.60″E"
-               style="width:100%; box-sizing:border-box; margin-bottom:6px;">
-        <div style="display:flex; gap:6px;">
-            <input type="number" id="input-lat" placeholder="Lat (-90 to 90)"
-                   step="0.0001" min="-90" max="90">
-            <input type="number" id="input-lon" placeholder="Lon (-180 to 180)"
-                   step="0.0001" min="-180" max="180">
-        </div>
+               placeholder="Paste DMS e.g. 32°03′17.22″S 115°52′28.60″E">
+        <input type="number" id="input-lat" placeholder="Latitude (-90 to 90)"
+               step="0.0001" min="-90" max="90">
+        <input type="number" id="input-lon" placeholder="Longitude (-180 to 180)"
+               step="0.0001" min="-180" max="180">
         <button class="action-btn" id="btn-manual-location"
                 style="width:100%; margin-top:6px;" aria-label="Set manual location">
             <span class="action-btn-icon" aria-hidden="true">&#10003;</span>
