@@ -210,6 +210,7 @@ export class StarlinkTracker {
             minElDisplay: document.getElementById('min-el-display'),
             selectedPassPanel: document.getElementById('selected-pass-panel'),
             passTableContainer: document.getElementById('pass-table-container'),
+            inputDms: document.getElementById('input-dms'),
             inputLat: document.getElementById('input-lat'),
             inputLon: document.getElementById('input-lon'),
             manualLocationForm: document.getElementById('manual-location-form'),
@@ -884,6 +885,18 @@ export class StarlinkTracker {
             const lon = parseFloat(this.ui.inputLon?.value);
             this.setManualLocation(lat, lon);
         });
+
+        // DMS paste input — auto-fills the decimal lat/lon fields
+        if (this.ui.inputDms) {
+            this._boundHandlers.dmsInput = () => {
+                const parsed = this._parseDMS(this.ui.inputDms.value);
+                if (parsed) {
+                    if (this.ui.inputLat) this.ui.inputLat.value = parsed.lat.toFixed(6);
+                    if (this.ui.inputLon) this.ui.inputLon.value = parsed.lon.toFixed(6);
+                }
+            };
+            this.ui.inputDms.addEventListener('input', this._boundHandlers.dmsInput);
+        }
 
         // Min elevation slider
         if (this.ui.minElSlider) {
@@ -2069,12 +2082,15 @@ export class StarlinkTracker {
             return;
         }
 
+        this.updateStatus('Requesting your location\u2026', 'status-warn');
+
         navigator.geolocation.getCurrentPosition(
             (position) => {
                 this._applyObserverLocation(position.coords.latitude, position.coords.longitude);
             },
             (error) => {
                 handleError('Geolocation', error, true);
+                this.updateStatus('Location unavailable \u2014 enter manually', 'status-err');
                 this._showManualLocationForm();
             },
             { enableHighAccuracy: false, timeout: 10000 }
@@ -2092,6 +2108,34 @@ export class StarlinkTracker {
             return;
         }
         this._applyObserverLocation(lat, lon);
+    }
+
+    /**
+     * Parses a DMS coordinate string (e.g. "32°03'17.22"S 115°52'28.60"E") into
+     * decimal degrees. Returns { lat, lon } or null if the string cannot be parsed.
+     * @param {string} str - DMS coordinate string
+     * @returns {{ lat: number, lon: number }|null}
+     */
+    _parseDMS(str) {
+        const s = str
+            .trim()
+            .replace(/[\u00b0\u02da]/g, '\u00b0')
+            .replace(/[\u2032\u02b9']/g, "'")
+            .replace(/[\u2033\u02ba"]/g, '"');
+
+        const re =
+            /(\d+(?:\.\d+)?)\u00b0\s*(?:(\d+(?:\.\d+)?)'?\s*)?(?:(\d+(?:\.\d+)?)"?\s*)?([NSns])\s+(\d+(?:\.\d+)?)\u00b0\s*(?:(\d+(?:\.\d+)?)'?\s*)?(?:(\d+(?:\.\d+)?)"?\s*)?([EWew])/;
+        const m = s.match(re);
+        if (!m) return null;
+
+        const toDec = (d, min, sec) =>
+            parseFloat(d) + parseFloat(min || 0) / 60 + parseFloat(sec || 0) / 3600;
+
+        const lat = toDec(m[1], m[2], m[3]) * (/[Ss]/.test(m[4]) ? -1 : 1);
+        const lon = toDec(m[5], m[6], m[7]) * (/[Ww]/.test(m[8]) ? -1 : 1);
+
+        if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return null;
+        return { lat, lon };
     }
 
     /**
@@ -2668,6 +2712,9 @@ export class StarlinkTracker {
                 'input',
                 this._boundHandlers.pixelSizeInput
             );
+        }
+        if (this._boundHandlers.dmsInput && this.ui.inputDms) {
+            this.ui.inputDms.removeEventListener('input', this._boundHandlers.dmsInput);
         }
 
         // Action buttons
