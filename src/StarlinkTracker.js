@@ -157,6 +157,7 @@ export class StarlinkTracker {
         // === Observer / Ground Station ===
         this.observerLocation = null; // { lat, lon } in degrees
         this.groundStationMarker = null;
+        this.locationPlacementMode = false;
 
         // === Theme ===
         this.currentTheme = loadThemePreference();
@@ -753,7 +754,7 @@ export class StarlinkTracker {
         };
         this.ui.searchBox.addEventListener('keydown', this._boundHandlers.searchKeyDown);
 
-        // Window click for selection
+        // Window click for selection / location placement
         this._boundHandlers.windowClick = (e) => {
             if (
                 e.target.closest('#ui-container') ||
@@ -762,6 +763,22 @@ export class StarlinkTracker {
                 e.target.closest('#keyboard-overlay')
             )
                 return;
+
+            // Click-to-place location marker when in placement mode
+            if (this.locationPlacementMode && !this.hovered) {
+                this.raycaster.setFromCamera(this.mouse, this.camera);
+                const hits = this.raycaster.intersectObject(this.earthGroup);
+                if (hits.length > 0) {
+                    const p = hits[0].point;
+                    const r = p.length();
+                    const lat = Math.asin(p.y / r) * (180 / Math.PI);
+                    const lon = Math.atan2(-p.z, p.x) * (180 / Math.PI);
+                    this._exitLocationPlacementMode();
+                    this._applyObserverLocation(lat, lon);
+                }
+                return;
+            }
+
             if (this.hovered) {
                 this.selectSatellite(this.hovered.layer, this.hovered.index);
             } else if (this.selected) {
@@ -775,7 +792,10 @@ export class StarlinkTracker {
             const inInput = !!e.target.closest('input, textarea');
 
             if (e.key === 'Escape') {
-                if (
+                if (this.locationPlacementMode) {
+                    this._exitLocationPlacementMode();
+                    if (!this.observerLocation) this.updateStatus('Ready', 'status-ok');
+                } else if (
                     this.ui.keyboardOverlay &&
                     this.ui.keyboardOverlay.classList.contains('visible')
                 ) {
@@ -2058,7 +2078,7 @@ export class StarlinkTracker {
                 }
             } else if (this.hovered) {
                 this.hovered = null;
-                document.body.style.cursor = 'default';
+                document.body.style.cursor = this.locationPlacementMode ? 'crosshair' : 'default';
                 if (!this.selected) {
                     this.ui.tooltip.style.display = 'none';
                 }
@@ -2076,22 +2096,26 @@ export class StarlinkTracker {
      * Requests the user's location via browser geolocation and applies it.
      */
     requestGroundStation() {
+        this._enterLocationPlacementMode();
+
         if (!navigator.geolocation) {
-            showErrorToast('Geolocation is not supported by your browser');
             this._showManualLocationForm();
             return;
         }
 
-        this.updateStatus('Requesting your location\u2026', 'status-warn');
-
         navigator.geolocation.getCurrentPosition(
             (position) => {
+                this._exitLocationPlacementMode();
                 this._applyObserverLocation(position.coords.latitude, position.coords.longitude);
             },
             (error) => {
                 handleError('Geolocation', error, true);
-                this.updateStatus('Location unavailable \u2014 enter manually', 'status-err');
+                this.updateStatus(
+                    'Location unavailable \u2014 click globe or enter manually',
+                    'status-err'
+                );
                 this._showManualLocationForm();
+                // stay in placement mode so user can click the globe
             },
             { enableHighAccuracy: false, timeout: 10000 }
         );
@@ -2164,6 +2188,24 @@ export class StarlinkTracker {
         }
     }
 
+    /** Enters click-to-place mode: crosshair cursor + status hint. */
+    _enterLocationPlacementMode() {
+        this.locationPlacementMode = true;
+        document.body.style.cursor = 'crosshair';
+        this.updateStatus(
+            'Click globe to place marker \u2014 or press Esc to cancel',
+            'status-warn'
+        );
+    }
+
+    /** Exits click-to-place mode and restores cursor. */
+    _exitLocationPlacementMode() {
+        this.locationPlacementMode = false;
+        if (!this.observerLocation) {
+            document.body.style.cursor = 'default';
+        }
+    }
+
     /**
      * Creates a 3D marker for the ground station on Earth's surface.
      */
@@ -2174,7 +2216,7 @@ export class StarlinkTracker {
             if (this.groundStationMarker.material) this.groundStationMarker.material.dispose();
         }
 
-        const geo = new THREE.SphereGeometry(0.08, 8, 8);
+        const geo = new THREE.SphereGeometry(0.12, 8, 8);
         const mat = new THREE.MeshBasicMaterial({ color: 0xff4444 });
         this.groundStationMarker = new THREE.Mesh(geo, mat);
         this.scene.add(this.groundStationMarker);
@@ -2205,7 +2247,7 @@ export class StarlinkTracker {
 
         const lat = this.observerLocation.lat * (Math.PI / 180);
         const lon = this.observerLocation.lon * (Math.PI / 180);
-        const alt = CONSTANTS.EARTH_RADIUS_KM * CONSTANTS.RENDER_SCALE;
+        const alt = CONSTANTS.EARTH_RADIUS_KM * CONSTANTS.RENDER_SCALE * 1.02;
 
         const x = alt * Math.cos(lat) * Math.cos(lon);
         const y = alt * Math.sin(lat);
@@ -2214,7 +2256,7 @@ export class StarlinkTracker {
         this.groundStationMarker.position.set(x, y, z);
 
         if (this.groundStationLine) {
-            const spike = 1.05;
+            const spike = 1.08;
             const posArr = this.groundStationLine.geometry.attributes.position.array;
             posArr[0] = x;
             posArr[1] = y;
