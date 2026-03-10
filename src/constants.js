@@ -83,6 +83,8 @@ export const CONSTANTS = {
     PASS_PREDICTION_HOURS: 24,
     PASS_MIN_ELEVATION_DEG: 10,
     PASS_TIME_STEP_SEC: 30,
+    PASS_MAX_COUNT: 10,
+    VISIBLE_COUNT_THROTTLE_MS: 2000,
 
     // === Texture URLs ===
     EARTH_DAY_TEXTURE: 'https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg',

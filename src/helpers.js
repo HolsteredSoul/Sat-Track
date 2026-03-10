@@ -199,3 +199,30 @@ export function loadPointSizePreference(defaultSize) {
         return defaultSize;
     }
 }
+
+/**
+ * Saves the observer location to localStorage.
+ * @param {{ lat: number, lon: number }} loc - Location in degrees
+ */
+export function saveObserverLocation(loc) {
+    try {
+        localStorage.setItem('sat-track-observer', JSON.stringify(loc));
+    } catch (e) {
+        // localStorage may be unavailable
+    }
+}
+
+/**
+ * Loads the saved observer location from localStorage.
+ * @returns {{ lat: number, lon: number } | null}
+ */
+export function loadObserverLocation() {
+    try {
+        const raw = localStorage.getItem('sat-track-observer');
+        if (!raw) return null;
+        const p = JSON.parse(raw);
+        return typeof p.lat === 'number' && typeof p.lon === 'number' ? p : null;
+    } catch (e) {
+        return null;
+    }
+}

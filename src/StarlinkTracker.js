@@ -12,6 +12,8 @@ import {
     calculateSunDirection,
     SimulatedOrbit,
     calculateElevation,
+    calculateAzimuth,
+    azimuthToCardinal,
     isMobileDevice,
     validateTLE,
     clampPointSize
@@ -24,7 +26,9 @@ import {
     saveThemePreference,
     loadThemePreference,
     savePointSizePreference,
-    loadPointSizePreference
+    loadPointSizePreference,
+    saveObserverLocation,
+    loadObserverLocation
 } from './helpers.js';
 
 export class StarlinkTracker {
@@ -133,6 +137,13 @@ export class StarlinkTracker {
         this.paused = false;
         this.pauseWallTime = 0;
 
+        // === Auto-Rotation State ===
+        this.autoRotateEnabled = true; // user preference; selection may override temporarily
+
+        // === Visible Count State ===
+        this._lastVisibleCountMs = 0;
+        this._visibleCountScope = 'starlink'; // 'starlink' | 'all'
+
         // === Point Size ===
         this.pointSize = clampPointSize(
             loadPointSizePreference(CONSTANTS.POINT_SIZE_DEFAULT),
@@ -192,6 +203,16 @@ export class StarlinkTracker {
             offlineBanner: document.getElementById('offline-banner'),
             keyboardOverlay: document.getElementById('keyboard-overlay'),
             passInfo: document.getElementById('pass-info'),
+            locationPanel: document.getElementById('location-panel'),
+            visibleCountText: document.getElementById('visible-count-text'),
+            visibleScopeBtn: document.getElementById('btn-visible-scope'),
+            minElSlider: document.getElementById('min-el-slider'),
+            minElDisplay: document.getElementById('min-el-display'),
+            selectedPassPanel: document.getElementById('selected-pass-panel'),
+            passTableContainer: document.getElementById('pass-table-container'),
+            inputLat: document.getElementById('input-lat'),
+            inputLon: document.getElementById('input-lon'),
+            manualLocationForm: document.getElementById('manual-location-form'),
             layers: {},
             badges: {},
             tooltipElements: {
@@ -364,6 +385,12 @@ export class StarlinkTracker {
             this.setupOrbitVisualizer();
             this.setupISSSprite();
             this.setupEvents();
+
+            // Restore saved observer location (if any)
+            const savedLocation = loadObserverLocation();
+            if (savedLocation) {
+                this._applyObserverLocation(savedLocation.lat, savedLocation.lon);
+            }
 
             // Collapse panel by default on mobile so the globe is visible
             if (window.innerWidth <= 768) {
@@ -774,6 +801,7 @@ export class StarlinkTracker {
                 e.preventDefault();
                 this.togglePause();
             }
+            if (key === 'a' || code === 'KeyA') this.toggleAutoRotate();
             if (key === 'n' || code === 'KeyN') this.resetToNow();
             if (key === 'r' || code === 'KeyR') this.resetCamera();
             if (key === 'c' || code === 'KeyC') this.cycleConstellationLayer();
@@ -827,6 +855,7 @@ export class StarlinkTracker {
         };
         bindBtn('btn-export', () => this.exportScreenshot());
         bindBtn('btn-location', () => this.requestGroundStation());
+        bindBtn('btn-auto-rotate', () => this.toggleAutoRotate());
         bindBtn('btn-theme', () => this.toggleTheme());
         bindBtn('btn-keyboard', () => this.toggleKeyboardOverlay());
         bindBtn('btn-reset-time', () => this.resetToNow());
@@ -834,6 +863,50 @@ export class StarlinkTracker {
         bindBtn('keyboard-overlay-close', () => {
             this.ui.keyboardOverlay.classList.remove('visible');
         });
+
+        // Manual location form
+        const manualToggle = document.getElementById('btn-manual-toggle');
+        if (manualToggle) {
+            this._boundHandlers.manualToggle = () => {
+                if (this.ui.manualLocationForm) {
+                    const hidden = this.ui.manualLocationForm.style.display === 'none';
+                    this.ui.manualLocationForm.style.display = hidden ? '' : 'none';
+                }
+            };
+            manualToggle.addEventListener('click', this._boundHandlers.manualToggle);
+            this._actionButtons.push({ el: manualToggle, handler: this._boundHandlers.manualToggle });
+        }
+        bindBtn('btn-manual-location', () => {
+            const lat = parseFloat(this.ui.inputLat?.value);
+            const lon = parseFloat(this.ui.inputLon?.value);
+            this.setManualLocation(lat, lon);
+        });
+
+        // Min elevation slider
+        if (this.ui.minElSlider) {
+            this._boundHandlers.minElInput = (e) => {
+                if (this.ui.minElDisplay) this.ui.minElDisplay.textContent = e.target.value;
+                this._lastVisibleCountMs = 0;
+                if (this.currentSimDate) this._updateVisibleCount(this.currentSimDate);
+                if (this.selected) this.predictPasses(this.selected.layer, this.selected.index);
+            };
+            this.ui.minElSlider.addEventListener('input', this._boundHandlers.minElInput);
+        }
+
+        // Visible count scope toggle
+        if (this.ui.visibleScopeBtn) {
+            this._boundHandlers.scopeToggle = () => {
+                this._visibleCountScope = this._visibleCountScope === 'starlink' ? 'all' : 'starlink';
+                if (this.ui.visibleScopeBtn) {
+                    this.ui.visibleScopeBtn.textContent =
+                        this._visibleCountScope === 'starlink' ? 'Starlink \u25BE' : 'All \u25BE';
+                }
+                this._lastVisibleCountMs = 0;
+                if (this.currentSimDate) this._updateVisibleCount(this.currentSimDate);
+            };
+            this.ui.visibleScopeBtn.addEventListener('click', this._boundHandlers.scopeToggle);
+            this._actionButtons.push({ el: this.ui.visibleScopeBtn, handler: this._boundHandlers.scopeToggle });
+        }
     }
 
     // ========================================================================
@@ -925,13 +998,27 @@ export class StarlinkTracker {
             }
             this.selected = null;
             this.ui.tooltip.style.display = 'none';
-            this.controls.autoRotate = true;
+            this.controls.autoRotate = this.autoRotateEnabled;
             this.orbitPathLine.visible = false;
             this.ui.searchBox.value = '';
             if (this.ui.passInfo) this.ui.passInfo.textContent = '';
+            if (this.ui.selectedPassPanel) this.ui.selectedPassPanel.style.display = 'none';
+            if (this.ui.passTableContainer) this.ui.passTableContainer.innerHTML = '';
         } catch (error) {
             handleError('Reset selection', error);
         }
+    }
+
+    /**
+     * Toggles camera auto-rotation on/off, respecting user preference across deselects.
+     */
+    toggleAutoRotate() {
+        this.autoRotateEnabled = !this.autoRotateEnabled;
+        if (!this.selected) {
+            this.controls.autoRotate = this.autoRotateEnabled;
+        }
+        const btn = document.getElementById('btn-auto-rotate');
+        if (btn) btn.classList.toggle('active', this.autoRotateEnabled);
     }
 
     /**
@@ -964,7 +1051,7 @@ export class StarlinkTracker {
 
             // Trigger pass prediction if observer is set
             if (this.observerLocation) {
-                this.predictNextPass(layerKey, index);
+                this.predictPasses(layerKey, index);
             }
         } catch (error) {
             handleError('Select satellite', error);
@@ -1548,6 +1635,9 @@ export class StarlinkTracker {
             // Sun position update always stays on main thread (drives shaders + UI)
             this.calculateSunPosition(simDate);
 
+            // Visible count update (throttled internally)
+            this._updateVisibleCount(simDate);
+
             // Orbit path for selected satellite stays on main thread (Three.js geometry)
             if (this.selected && this.ui.checkOrbit.checked) {
                 this.updateOrbitPath(this.selected.layer, this.selected.index, simDate);
@@ -1742,7 +1832,7 @@ export class StarlinkTracker {
 
             // Update ground station marker
             if (this.groundStationMarker && this.observerLocation) {
-                this.updateGroundStationMarker(simDate);
+                this.updateGroundStationMarker();
             }
 
             this.ui.count.innerText = totalActive;
@@ -1963,31 +2053,67 @@ export class StarlinkTracker {
     // ========================================================================
 
     /**
-     * Requests the user's location and places a ground station marker.
+     * Requests the user's location via browser geolocation and applies it.
      */
     requestGroundStation() {
         if (!navigator.geolocation) {
             showErrorToast('Geolocation is not supported by your browser');
+            this._showManualLocationForm();
             return;
         }
 
         navigator.geolocation.getCurrentPosition(
             (position) => {
-                this.observerLocation = {
-                    lat: position.coords.latitude,
-                    lon: position.coords.longitude
-                };
-                this.setupGroundStationMarker();
-                this.updateStatus(
-                    `Observer: ${this.observerLocation.lat.toFixed(2)}, ${this.observerLocation.lon.toFixed(2)}`,
-                    'status-ok'
+                this._applyObserverLocation(
+                    position.coords.latitude,
+                    position.coords.longitude
                 );
             },
             (error) => {
                 handleError('Geolocation', error, true);
+                this._showManualLocationForm();
             },
             { enableHighAccuracy: false, timeout: 10000 }
         );
+    }
+
+    /**
+     * Sets observer location from manual lat/lon input after validation.
+     * @param {number} lat - Latitude in degrees (-90 to 90)
+     * @param {number} lon - Longitude in degrees (-180 to 180)
+     */
+    setManualLocation(lat, lon) {
+        if (isNaN(lat) || isNaN(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+            showErrorToast('Invalid coordinates. Lat: -90 to 90, Lon: -180 to 180');
+            return;
+        }
+        this._applyObserverLocation(lat, lon);
+    }
+
+    /**
+     * Applies an observer location: stores it, places marker, saves to localStorage,
+     * shows the location panel, and re-triggers pass prediction if a sat is selected.
+     * @param {number} lat - Latitude in degrees
+     * @param {number} lon - Longitude in degrees
+     */
+    _applyObserverLocation(lat, lon) {
+        this.observerLocation = { lat, lon };
+        this.setupGroundStationMarker();
+        saveObserverLocation({ lat, lon });
+        this.updateStatus(`Observer: ${lat.toFixed(2)}, ${lon.toFixed(2)}`, 'status-ok');
+        if (this.ui.locationPanel) this.ui.locationPanel.style.display = '';
+        if (this.selected) {
+            this.predictPasses(this.selected.layer, this.selected.index);
+        }
+    }
+
+    /**
+     * Shows the manual location input form.
+     */
+    _showManualLocationForm() {
+        if (this.ui.manualLocationForm) {
+            this.ui.manualLocationForm.style.display = '';
+        }
     }
 
     /**
@@ -2023,21 +2149,19 @@ export class StarlinkTracker {
     }
 
     /**
-     * Updates ground station marker position accounting for Earth's rotation.
-     * @param {Date} simDate - Current simulation date
+     * Updates ground station marker position on Earth's surface.
+     * The scene uses Earth-fixed (ECEF) coordinates — no GMST offset needed.
      */
-    updateGroundStationMarker(simDate) {
+    updateGroundStationMarker() {
         if (!this.observerLocation || !this.groundStationMarker) return;
 
         const lat = this.observerLocation.lat * (Math.PI / 180);
         const lon = this.observerLocation.lon * (Math.PI / 180);
-        const gmst = satellite.gstime(simDate);
-        const gd = { latitude: lat, longitude: lon - gmst, height: 0 };
         const alt = CONSTANTS.EARTH_RADIUS_KM * CONSTANTS.RENDER_SCALE;
 
-        const x = alt * Math.cos(gd.latitude) * Math.cos(gd.longitude);
-        const y = alt * Math.sin(gd.latitude);
-        const z = -alt * Math.cos(gd.latitude) * Math.sin(gd.longitude);
+        const x = alt * Math.cos(lat) * Math.cos(lon);
+        const y = alt * Math.sin(lat);
+        const z = -alt * Math.cos(lat) * Math.sin(lon);
 
         this.groundStationMarker.position.set(x, y, z);
 
@@ -2059,18 +2183,25 @@ export class StarlinkTracker {
     // ========================================================================
 
     /**
-     * Predicts the next visible pass for a selected satellite.
+     * Predicts up to PASS_MAX_COUNT visible passes for a selected satellite and renders
+     * results in the location panel pass table.
      * @param {string} layerKey - Layer identifier
      * @param {number} index - Satellite index
+     * TODO: twilight filter (requires per-step sun elevation — deferred)
      */
-    predictNextPass(layerKey, index) {
-        if (!this.observerLocation || !this.ui.passInfo) return;
+    predictPasses(layerKey, index) {
+        if (!this.observerLocation) return;
 
         const layer = this.layerData[layerKey];
         if (!layer) return;
         const sat = layer.satData[index];
+
         if (!sat || sat.isSimulated) {
-            this.ui.passInfo.textContent = 'Pass prediction unavailable for simulated satellites';
+            if (this.ui.passTableContainer) {
+                this.ui.passTableContainer.innerHTML =
+                    '<div style="font-size:11px; color:var(--ui-subtext); padding:6px 0;">Pass prediction unavailable for simulated satellites.</div>';
+            }
+            if (this.ui.selectedPassPanel) this.ui.selectedPassPanel.style.display = '';
             return;
         }
 
@@ -2078,50 +2209,164 @@ export class StarlinkTracker {
             const obsLat = this.observerLocation.lat * (Math.PI / 180);
             const obsLon = this.observerLocation.lon * (Math.PI / 180);
             const observer = { lat: obsLat, lon: obsLon, alt: 0 };
+            const minEl = this.ui.minElSlider
+                ? parseFloat(this.ui.minElSlider.value)
+                : CONSTANTS.PASS_MIN_ELEVATION_DEG;
 
             const now = this.currentSimDate || new Date();
             const endTime = new Date(now.getTime() + CONSTANTS.PASS_PREDICTION_HOURS * 3600000);
             const stepMs = CONSTANTS.PASS_TIME_STEP_SEC * 1000;
 
+            const passes = [];
             let inPass = false;
             let passStart = null;
+            let aosAz = 0;
             let maxEl = 0;
+            let maxElAz = 0;
 
             for (let t = now.getTime(); t < endTime.getTime(); t += stepMs) {
                 const date = new Date(t);
                 try {
                     const pv = satellite.propagate(sat, date);
                     if (!pv.position || isNaN(pv.position.x)) continue;
-
                     const gmst = satellite.gstime(date);
                     const el = calculateElevation(observer, pv.position, gmst);
+                    const az = calculateAzimuth(observer, pv.position, gmst);
 
-                    if (el >= CONSTANTS.PASS_MIN_ELEVATION_DEG) {
+                    if (el >= minEl) {
                         if (!inPass) {
                             inPass = true;
                             passStart = date;
+                            aosAz = az;
                             maxEl = el;
+                            maxElAz = az;
                         }
-                        if (el > maxEl) maxEl = el;
+                        if (el > maxEl) {
+                            maxEl = el;
+                            maxElAz = az;
+                        }
                     } else if (inPass) {
-                        // Pass ended — report it
-                        const startStr = passStart.toISOString().split('T')[1].split('.')[0];
-                        const endStr = date.toISOString().split('T')[1].split('.')[0];
-                        this.ui.passInfo.textContent = `Next pass: ${startStr}-${endStr} UTC, max el: ${maxEl.toFixed(1)}`;
-                        return;
+                        passes.push({
+                            aos: passStart,
+                            los: date,
+                            durationSec: Math.round((date.getTime() - passStart.getTime()) / 1000),
+                            maxEl,
+                            maxElAz,
+                            maxElAzCard: azimuthToCardinal(maxElAz),
+                            aosAz,
+                            aosAzCard: azimuthToCardinal(aosAz)
+                        });
+                        inPass = false;
+                        if (passes.length >= CONSTANTS.PASS_MAX_COUNT) break;
                     }
-                } catch (e) {
-                    /* skip step */
-                }
+                } catch (e) { /* skip step */ }
+            }
+            // capture pass still in progress at loop end
+            if (inPass && passes.length < CONSTANTS.PASS_MAX_COUNT) {
+                passes.push({
+                    aos: passStart,
+                    los: new Date(endTime),
+                    durationSec: Math.round((endTime.getTime() - passStart.getTime()) / 1000),
+                    maxEl,
+                    maxElAz,
+                    maxElAzCard: azimuthToCardinal(maxElAz),
+                    aosAz,
+                    aosAzCard: azimuthToCardinal(aosAz)
+                });
             }
 
-            this.ui.passInfo.textContent = inPass
-                ? `Pass in progress! Max el: ${maxEl.toFixed(1)}`
-                : 'No passes in next 24h';
+            this._renderPassTable(passes, now);
         } catch (error) {
             handleError('Pass prediction', error);
-            this.ui.passInfo.textContent = 'Pass prediction error';
+            if (this.ui.passTableContainer) {
+                this.ui.passTableContainer.innerHTML =
+                    '<div style="font-size:11px; color:var(--bad);">Pass prediction error.</div>';
+            }
         }
+        if (this.ui.selectedPassPanel) this.ui.selectedPassPanel.style.display = '';
+    }
+
+    /**
+     * Renders the pass table HTML into the pass-table-container element.
+     * @param {Array} passes - Array of pass objects
+     * @param {Date} now - Current sim date (for date prefix logic)
+     */
+    _renderPassTable(passes, now) {
+        if (!this.ui.passTableContainer) return;
+        if (passes.length === 0) {
+            this.ui.passTableContainer.innerHTML =
+                `<div style="font-size:11px; color:var(--ui-subtext); padding:6px 0;">No passes in next ${CONSTANTS.PASS_PREDICTION_HOURS}h.</div>`;
+            return;
+        }
+        const todayStr = now.toISOString().slice(0, 10);
+        const rows = passes.map((p) => {
+            const aosStr = p.aos.toISOString();
+            const aosDate = aosStr.slice(0, 10);
+            const aosTime = aosStr.slice(11, 19);
+            const timeLabel = aosDate !== todayStr ? `${aosDate.slice(5)} ${aosTime}` : aosTime;
+            const mins = Math.floor(p.durationSec / 60);
+            const secs = p.durationSec % 60;
+            const dur = `${mins}m ${secs}s`;
+            return `<tr>
+                <td>${timeLabel} UTC</td>
+                <td>${dur}</td>
+                <td>${p.maxEl.toFixed(1)}&deg;</td>
+                <td>${p.maxElAz.toFixed(0)}&deg; ${p.maxElAzCard}</td>
+                <td>${p.aosAzCard}</td>
+            </tr>`;
+        }).join('');
+        this.ui.passTableContainer.innerHTML = `
+            <table>
+                <thead><tr>
+                    <th>AOS (UTC)</th><th>Duration</th><th>Max El</th>
+                    <th>Dir at Max</th><th>AOS Dir</th>
+                </tr></thead>
+                <tbody>${rows}</tbody>
+            </table>`;
+    }
+
+    /**
+     * Updates the "currently visible" satellite count banner.
+     * Throttled to VISIBLE_COUNT_THROTTLE_MS.
+     * @param {Date} simDate - Current simulation date
+     */
+    _updateVisibleCount(simDate) {
+        if (!this.observerLocation || !this.ui.visibleCountText) return;
+        const nowMs = performance.now();
+        if (nowMs - this._lastVisibleCountMs < CONSTANTS.VISIBLE_COUNT_THROTTLE_MS) return;
+        this._lastVisibleCountMs = nowMs;
+
+        const minEl = this.ui.minElSlider
+            ? parseFloat(this.ui.minElSlider.value)
+            : CONSTANTS.PASS_MIN_ELEVATION_DEG;
+        const gmst = satellite.gstime(simDate);
+        const obsLat = this.observerLocation.lat * (Math.PI / 180);
+        const obsLon = this.observerLocation.lon * (Math.PI / 180);
+        const observer = { lat: obsLat, lon: obsLon, alt: 0 };
+
+        let count = 0;
+        const scopeKeys = this._visibleCountScope === 'starlink'
+            ? ['starlink']
+            : this.layerOrder.filter((k) => this.layers[k]?.enabled &&
+                (!this.ui.layers[k] || this.ui.layers[k].checked));
+
+        for (const layerKey of scopeKeys) {
+            const layer = this.layerData[layerKey];
+            if (!layer) continue;
+            for (const sat of layer.satData) {
+                if (sat.isSimulated) continue;
+                try {
+                    const pv = satellite.propagate(sat, simDate);
+                    if (!pv.position || isNaN(pv.position.x)) continue;
+                    if (calculateElevation(observer, pv.position, gmst) >= minEl) count++;
+                } catch (e) { /* skip */ }
+            }
+        }
+
+        const scopeLabel = this._visibleCountScope === 'starlink' ? 'Starlink' : '';
+        const label = scopeLabel ? `${count} ${scopeLabel} visible now` : `${count} visible now`;
+        this.ui.visibleCountText.textContent = label;
+        this.ui.visibleCountText.style.color = count > 0 ? 'var(--good)' : 'var(--ui-subtext)';
     }
 
     // ========================================================================
