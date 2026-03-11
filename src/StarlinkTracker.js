@@ -2227,7 +2227,6 @@ export class StarlinkTracker {
     /** Enters click-to-place mode: crosshair cursor + status hint. */
     _enterLocationPlacementMode() {
         this.locationPlacementMode = true;
-        this.controls.enabled = false; // freeze orbit so the click lands where aimed
         document.body.style.cursor = 'crosshair';
         this.updateStatus(
             'Click globe to place marker \u2014 or press Esc to cancel',
@@ -2238,7 +2237,6 @@ export class StarlinkTracker {
     /** Exits click-to-place mode and restores cursor. */
     _exitLocationPlacementMode() {
         this.locationPlacementMode = false;
-        this.controls.enabled = true;
         if (!this.observerLocation) {
             document.body.style.cursor = 'default';
         }
