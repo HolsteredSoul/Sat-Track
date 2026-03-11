@@ -471,10 +471,17 @@ export class StarlinkTracker {
      */
     setupEarth() {
         const loader = new THREE.TextureLoader();
+        const maxAniso = this.renderer.capabilities.getMaxAnisotropy();
+        const setTexQuality = (tex) => {
+            tex.anisotropy = maxAniso;
+            tex.minFilter = THREE.LinearMipmapLinearFilter;
+            tex.magFilter = THREE.LinearFilter;
+            tex.needsUpdate = true;
+        };
 
         const initialUniforms = {
-            dayTexture: { value: loader.load(this.config.urls.earthDay) },
-            nightTexture: { value: loader.load(this.config.urls.earthNight) },
+            dayTexture: { value: loader.load(this.config.urls.earthDay, setTexQuality) },
+            nightTexture: { value: loader.load(this.config.urls.earthNight, setTexQuality) },
             sunDirection: { value: new THREE.Vector3(1, 0, 0) }
         };
 
@@ -493,7 +500,7 @@ export class StarlinkTracker {
                 }
             `,
             fragmentShader: `
-                precision mediump float;
+                precision highp float;
                 uniform sampler2D dayTexture;
                 uniform sampler2D nightTexture;
                 uniform vec3 sunDirection;
@@ -2003,6 +2010,12 @@ export class StarlinkTracker {
         if (this.isDisposed) return;
         requestAnimationFrame(() => this.animate());
         try {
+            // Scale rotation speed to camera distance so close-up movement stays controllable.
+            const camDist = this.camera.position.length();
+            this.controls.rotateSpeed = Math.min(
+                1.5,
+                Math.max(0.08, (camDist / CONSTANTS.CAMERA_INITIAL_DISTANCE) * 0.5)
+            );
             this.controls.update();
             this.updatePhysics();
             this.checkRaycast();
@@ -2171,12 +2184,35 @@ export class StarlinkTracker {
     _applyObserverLocation(lat, lon) {
         this.observerLocation = { lat, lon };
         this.setupGroundStationMarker();
+        this.updateGroundStationMarker(); // position immediately, don't wait for physics tick
         saveObserverLocation({ lat, lon });
-        this.updateStatus(`Observer: ${lat.toFixed(2)}, ${lon.toFixed(2)}`, 'status-ok');
+        this.updateStatus(
+            `Observer: ${lat.toFixed(2)}\u00b0, ${lon.toFixed(2)}\u00b0`,
+            'status-ok'
+        );
+        showErrorToast(
+            `\u{1F4CD} Location set: ${Math.abs(lat).toFixed(4)}\u00b0${lat >= 0 ? 'N' : 'S'} ${Math.abs(lon).toFixed(4)}\u00b0${lon >= 0 ? 'E' : 'W'}`
+        );
+        this._panCameraToMarker(lat, lon);
         if (this.ui.locationPanel) this.ui.locationPanel.style.display = '';
         if (this.selected) {
             this.predictPasses(this.selected.layer, this.selected.index);
         }
+    }
+
+    /** Rotates the camera so the placed marker faces the viewer. */
+    _panCameraToMarker(lat, lon) {
+        const lat_r = lat * (Math.PI / 180);
+        const lon_r = lon * (Math.PI / 180);
+        // Unit vector toward the marker in scene (ECEF) space
+        const dir = new THREE.Vector3(
+            Math.cos(lat_r) * Math.cos(lon_r),
+            Math.sin(lat_r),
+            -Math.cos(lat_r) * Math.sin(lon_r)
+        );
+        const dist = this.camera.position.length();
+        this.camera.position.copy(dir.multiplyScalar(dist));
+        this.controls.update();
     }
 
     /**
@@ -2191,6 +2227,7 @@ export class StarlinkTracker {
     /** Enters click-to-place mode: crosshair cursor + status hint. */
     _enterLocationPlacementMode() {
         this.locationPlacementMode = true;
+        this.controls.enabled = false; // freeze orbit so the click lands where aimed
         document.body.style.cursor = 'crosshair';
         this.updateStatus(
             'Click globe to place marker \u2014 or press Esc to cancel',
@@ -2201,6 +2238,7 @@ export class StarlinkTracker {
     /** Exits click-to-place mode and restores cursor. */
     _exitLocationPlacementMode() {
         this.locationPlacementMode = false;
+        this.controls.enabled = true;
         if (!this.observerLocation) {
             document.body.style.cursor = 'default';
         }
