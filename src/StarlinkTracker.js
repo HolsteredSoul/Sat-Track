@@ -801,7 +801,7 @@ export class StarlinkTracker {
                     // atan2(-z, x) gives "formula longitude" (scene space); add 90° to
                     // convert to real geographic longitude, then normalise to [-180, 180].
                     const lonRaw = Math.atan2(-p.z, p.x) * (180 / Math.PI) + 90;
-                    const lon = ((lonRaw + 180) % 360 + 360) % 360 - 180;
+                    const lon = ((((lonRaw + 180) % 360) + 360) % 360) - 180;
                     this._exitLocationPlacementMode();
                     this._applyObserverLocation(lat, lon);
                 }
@@ -1169,9 +1169,10 @@ export class StarlinkTracker {
         if (!pos || pos.lengthSq() === 0) return;
 
         const targetDist = 0.15; // ~150 km above surface in render scale
-        const endPos = pos.clone().normalize().multiplyScalar(
-            pos.length() + targetDist
-        );
+        const endPos = pos
+            .clone()
+            .normalize()
+            .multiplyScalar(pos.length() + targetDist);
 
         this._cameraAnim = {
             start: this.camera.position.clone(),
@@ -1250,11 +1251,12 @@ export class StarlinkTracker {
         }
 
         const layerData = this.layerData[target.layer];
-        const name = layerData ? (layerData.satNames[target.index] || 'Unknown') : 'Unknown';
+        const name = layerData ? layerData.satNames[target.index] || 'Unknown' : 'Unknown';
 
         if (!this._satLabel) {
             const div = document.createElement('div');
-            div.style.cssText = 'color:white; background:rgba(0,0,0,0.75); padding:4px 8px; border-radius:4px; font-size:11px; font-family:system-ui,sans-serif; white-space:nowrap;';
+            div.style.cssText =
+                'color:white; background:rgba(0,0,0,0.75); padding:4px 8px; border-radius:4px; font-size:11px; font-family:system-ui,sans-serif; white-space:nowrap;';
             this._satLabel = new CSS2DObject(div);
             this.scene.add(this._satLabel);
         }
