@@ -798,7 +798,10 @@ export class StarlinkTracker {
                     const p = hits[0].point;
                     const r = p.length();
                     const lat = Math.asin(p.y / r) * (180 / Math.PI);
-                    const lon = Math.atan2(-p.z, p.x) * (180 / Math.PI);
+                    // atan2(-z, x) gives "formula longitude" (scene space); add 90° to
+                    // convert to real geographic longitude, then normalise to [-180, 180].
+                    const lonRaw = Math.atan2(-p.z, p.x) * (180 / Math.PI) + 90;
+                    const lon = ((lonRaw + 180) % 360 + 360) % 360 - 180;
                     this._exitLocationPlacementMode();
                     this._applyObserverLocation(lat, lon);
                 }
@@ -2383,7 +2386,8 @@ export class StarlinkTracker {
     /** Rotates the camera so the placed marker faces the viewer. */
     _panCameraToMarker(lat, lon) {
         const lat_r = lat * (Math.PI / 180);
-        const lon_r = lon * (Math.PI / 180);
+        // Subtract 90° to account for earthGroup.rotation.y = -π/2 (visual Earth offset)
+        const lon_r = (lon - 90) * (Math.PI / 180);
         // Unit vector toward the marker in scene (ECEF) space
         const dir = new THREE.Vector3(
             Math.cos(lat_r) * Math.cos(lon_r),
@@ -2462,7 +2466,8 @@ export class StarlinkTracker {
         if (!this.observerLocation || !this.groundStationMarker) return;
 
         const lat = this.observerLocation.lat * (Math.PI / 180);
-        const lon = this.observerLocation.lon * (Math.PI / 180);
+        // Subtract 90° to account for earthGroup.rotation.y = -π/2 (visual Earth offset)
+        const lon = (this.observerLocation.lon - 90) * (Math.PI / 180);
         const alt = CONSTANTS.EARTH_RADIUS_KM * CONSTANTS.RENDER_SCALE * 1.02;
 
         const x = alt * Math.cos(lat) * Math.cos(lon);
