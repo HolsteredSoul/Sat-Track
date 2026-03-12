@@ -769,6 +769,22 @@
             <span class="action-btn-icon" aria-hidden="true">&#128279;</span>
             Share
         </button>
+        <button class="action-btn" id="btn-focus" aria-label="Focus camera on selected satellite">
+            <span class="action-btn-icon" aria-hidden="true">&#9678;</span>
+            Focus
+        </button>
+        <button class="action-btn" id="btn-follow" aria-label="Toggle follow-camera mode">
+            <span class="action-btn-icon" aria-hidden="true">&#10148;</span>
+            Follow
+        </button>
+        <button class="action-btn active" id="btn-labels" aria-label="Toggle satellite labels">
+            <span class="action-btn-icon" aria-hidden="true">&#9649;</span>
+            Labels
+        </button>
+        <button class="action-btn" id="btn-reset-camera" aria-label="Reset camera to default view">
+            <span class="action-btn-icon" aria-hidden="true">&#8634;</span>
+            Reset
+        </button>
     </div>
     <button id="btn-manual-toggle" aria-label="Enter location manually">Enter coordinates manually</button>
     <div id="manual-location-form" style="display:none; margin-top:8px;">
@@ -799,7 +815,7 @@
 <div id="pause-indicator" style="display:none; position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); background:rgba(0,0,0,0.7); color:#fff; padding:12px 24px; border-radius:12px; font-size:18px; font-weight:600; pointer-events:none; z-index:200; letter-spacing:0.05em;">⏸ PAUSED</div>
 
 <div id="controls">
-    Drag: Rotate | Scroll: Zoom | Click: Select | H: UI | A: Rotation | P: Pause | G: Location | N: Now | R: Reset | C: Cycle | ?: Shortcuts
+    Drag: Rotate | Scroll: Zoom | Click: Select | H: UI | A: Rotation | P: Pause | G: Location | N: Now | R: Reset | C: Cycle | F: Focus | L: Labels | ?: Shortcuts
 </div>
 
 <div id="error-toast" role="alert" aria-live="assertive"></div>
@@ -847,6 +863,14 @@
         <div class="shortcut-row">
             <span>Toggle auto-rotation</span>
             <span class="shortcut-key">A</span>
+        </div>
+        <div class="shortcut-row">
+            <span>Focus on satellite</span>
+            <span class="shortcut-key">F</span>
+        </div>
+        <div class="shortcut-row">
+            <span>Toggle labels</span>
+            <span class="shortcut-key">L</span>
         </div>
         <div class="shortcut-row">
             <span>Deselect / Close</span>
