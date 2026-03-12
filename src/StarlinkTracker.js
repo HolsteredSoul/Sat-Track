@@ -5,6 +5,7 @@
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import * as satellite from 'satellite.js';
 import { CONSTANTS } from './constants.js';
 import {
@@ -28,7 +29,9 @@ import {
     savePointSizePreference,
     loadPointSizePreference,
     saveObserverLocation,
-    loadObserverLocation
+    loadObserverLocation,
+    saveLabelsPreference,
+    loadLabelsPreference
 } from './helpers.js';
 
 export class StarlinkTracker {
@@ -153,6 +156,11 @@ export class StarlinkTracker {
 
         // === Constellation Cycle State ===
         this.cycleLayerIndex = -1;
+
+        // === Focus / Follow Mode ===
+        this.followMode = false;
+        this._cameraAnim = null; // { start, end, target, startTime, duration }
+        this.labelsEnabled = loadLabelsPreference(true);
 
         // === Observer / Ground Station ===
         this.observerLocation = null; // { lat, lon } in degrees
@@ -444,6 +452,16 @@ export class StarlinkTracker {
         this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
         document.body.appendChild(this.renderer.domElement);
 
+        // CSS2D overlay renderer for satellite labels
+        this.css2dRenderer = new CSS2DRenderer();
+        this.css2dRenderer.setSize(window.innerWidth, window.innerHeight);
+        this.css2dRenderer.domElement.style.position = 'absolute';
+        this.css2dRenderer.domElement.style.top = '0';
+        this.css2dRenderer.domElement.style.left = '0';
+        this.css2dRenderer.domElement.style.pointerEvents = 'none';
+        document.body.appendChild(this.css2dRenderer.domElement);
+        this._satLabel = null; // current CSS2DObject label
+
         this.controls = new OrbitControls(this.camera, this.renderer.domElement);
         this.controls.enableDamping = true;
         this.controls.dampingFactor = CONSTANTS.DAMPING_FACTOR;
@@ -662,6 +680,7 @@ export class StarlinkTracker {
             this.camera.aspect = window.innerWidth / window.innerHeight;
             this.camera.updateProjectionMatrix();
             this.renderer.setSize(window.innerWidth, window.innerHeight);
+            this.css2dRenderer.setSize(window.innerWidth, window.innerHeight);
         };
         window.addEventListener('resize', this._boundHandlers.resize);
 
@@ -833,6 +852,8 @@ export class StarlinkTracker {
             if (key === 'n' || code === 'KeyN') this.resetToNow();
             if (key === 'r' || code === 'KeyR') this.resetCamera();
             if (key === 'c' || code === 'KeyC') this.cycleConstellationLayer();
+            if (key === 'f' || code === 'KeyF') this.focusOnSatellite();
+            if (key === 'l' || code === 'KeyL') this.toggleLabels();
         };
         window.addEventListener('keydown', this._boundHandlers.keyDown);
 
@@ -888,6 +909,15 @@ export class StarlinkTracker {
         bindBtn('btn-keyboard', () => this.toggleKeyboardOverlay());
         bindBtn('btn-reset-time', () => this.resetToNow());
         bindBtn('btn-share', () => this.copyShareableURL());
+        bindBtn('btn-focus', () => this.focusOnSatellite());
+        bindBtn('btn-follow', () => this.toggleFollowMode());
+        bindBtn('btn-labels', () => this.toggleLabels());
+        bindBtn('btn-reset-camera', () => this.resetCamera());
+
+        // Set initial active state for labels button
+        const labelsBtn = document.getElementById('btn-labels');
+        if (labelsBtn) labelsBtn.classList.toggle('active', this.labelsEnabled);
+
         bindBtn('keyboard-overlay-close', () => {
             this.ui.keyboardOverlay.classList.remove('visible');
         });
@@ -1044,6 +1074,10 @@ export class StarlinkTracker {
                 colors.needsUpdate = true;
             }
             this.selected = null;
+            this.followMode = false;
+            const followBtn = document.getElementById('btn-follow');
+            if (followBtn) followBtn.classList.remove('active');
+            this.removeSatelliteLabel();
             this.ui.tooltip.style.display = 'none';
             this.controls.autoRotate = this.autoRotateEnabled;
             this.orbitPathLine.visible = false;
@@ -1103,6 +1137,146 @@ export class StarlinkTracker {
         } catch (error) {
             handleError('Select satellite', error);
         }
+    }
+
+    // ========================================================================
+    // FOCUS / FOLLOW / LABELS
+    // ========================================================================
+
+    /**
+     * Returns the world position of a satellite from its mesh geometry.
+     * @param {string} layerKey - Layer identifier
+     * @param {number} index - Satellite index
+     * @returns {THREE.Vector3|null}
+     */
+    getSatelliteWorldPosition(layerKey, index) {
+        const mesh = this.layerMeshes[layerKey];
+        if (!mesh) return null;
+        const pos = mesh.geometry.attributes.position;
+        if (!pos || index >= pos.count) return null;
+        return new THREE.Vector3(pos.getX(index), pos.getY(index), pos.getZ(index));
+    }
+
+    /**
+     * Smoothly moves the camera to focus on the currently selected satellite.
+     */
+    focusOnSatellite() {
+        if (!this.selected) return;
+        const pos = this.getSatelliteWorldPosition(this.selected.layer, this.selected.index);
+        if (!pos || pos.lengthSq() === 0) return;
+
+        const targetDist = 0.15; // ~150 km above surface in render scale
+        const endPos = pos.clone().normalize().multiplyScalar(
+            pos.length() + targetDist
+        );
+
+        this._cameraAnim = {
+            start: this.camera.position.clone(),
+            end: endPos,
+            target: pos.clone(),
+            startTime: performance.now(),
+            duration: 800
+        };
+    }
+
+    /**
+     * Toggles the follow-camera mode for the selected satellite.
+     */
+    toggleFollowMode() {
+        this.followMode = !this.followMode;
+        const btn = document.getElementById('btn-follow');
+        if (btn) btn.classList.toggle('active', this.followMode);
+        if (this.followMode && this.selected) {
+            this.controls.autoRotate = false;
+        }
+    }
+
+    /**
+     * Updates the camera animation (smooth focus transition).
+     */
+    updateCameraAnimation() {
+        if (!this._cameraAnim) return;
+        const { start, end, target, startTime, duration } = this._cameraAnim;
+        const t = Math.min(1, (performance.now() - startTime) / duration);
+        // Smooth ease-out
+        const ease = 1 - Math.pow(1 - t, 3);
+        this.camera.position.lerpVectors(start, end, ease);
+        this.controls.target.lerp(target, ease);
+        if (t >= 1) this._cameraAnim = null;
+    }
+
+    /**
+     * Updates the follow-camera to track the selected satellite.
+     */
+    updateFollowMode() {
+        if (!this.followMode || !this.selected) return;
+        const pos = this.getSatelliteWorldPosition(this.selected.layer, this.selected.index);
+        if (!pos || pos.lengthSq() === 0) return;
+        // Keep the camera offset constant but shift it to follow the satellite
+        const offset = this.camera.position.clone().sub(this.controls.target);
+        this.controls.target.copy(pos);
+        this.camera.position.copy(pos).add(offset);
+    }
+
+    /**
+     * Creates or updates the CSS2D label for the selected/hovered satellite.
+     */
+    updateSatelliteLabel() {
+        if (!this.labelsEnabled) {
+            this.removeSatelliteLabel();
+            return;
+        }
+
+        const camDist = this.camera.position.length();
+        // Only show labels when zoomed in
+        if (camDist > 15) {
+            this.removeSatelliteLabel();
+            return;
+        }
+
+        const target = this.selected || this.hovered;
+        if (!target) {
+            this.removeSatelliteLabel();
+            return;
+        }
+
+        const pos = this.getSatelliteWorldPosition(target.layer, target.index);
+        if (!pos || pos.lengthSq() === 0) {
+            this.removeSatelliteLabel();
+            return;
+        }
+
+        const layerData = this.layerData[target.layer];
+        const name = layerData ? (layerData.satNames[target.index] || 'Unknown') : 'Unknown';
+
+        if (!this._satLabel) {
+            const div = document.createElement('div');
+            div.style.cssText = 'color:white; background:rgba(0,0,0,0.75); padding:4px 8px; border-radius:4px; font-size:11px; font-family:system-ui,sans-serif; white-space:nowrap;';
+            this._satLabel = new CSS2DObject(div);
+            this.scene.add(this._satLabel);
+        }
+        this._satLabel.element.textContent = name;
+        this._satLabel.position.copy(pos);
+        this._satLabel.visible = true;
+    }
+
+    /**
+     * Removes the CSS2D satellite label from the scene.
+     */
+    removeSatelliteLabel() {
+        if (this._satLabel) {
+            this._satLabel.visible = false;
+        }
+    }
+
+    /**
+     * Toggles satellite label visibility.
+     */
+    toggleLabels() {
+        this.labelsEnabled = !this.labelsEnabled;
+        const btn = document.getElementById('btn-labels');
+        if (btn) btn.classList.toggle('active', this.labelsEnabled);
+        saveLabelsPreference(this.labelsEnabled);
     }
 
     // ========================================================================
@@ -2010,17 +2184,21 @@ export class StarlinkTracker {
         if (this.isDisposed) return;
         requestAnimationFrame(() => this.animate());
         try {
-            // Scale rotation speed to camera distance so close-up movement stays controllable.
+            // Scale control sensitivity to camera distance so close-up movement stays controllable.
             const camDist = this.camera.position.length();
-            this.controls.rotateSpeed = Math.min(
-                1.5,
-                Math.max(0.08, (camDist / CONSTANTS.CAMERA_INITIAL_DISTANCE) * 0.5)
-            );
+            const factor = Math.max(0.1, Math.min(5, camDist / 5));
+            this.controls.rotateSpeed = 0.8 * factor;
+            this.controls.panSpeed = 0.6 * factor;
+            this.controls.zoomSpeed = 0.8 * factor;
+            this.updateCameraAnimation();
+            this.updateFollowMode();
             this.controls.update();
             this.updatePhysics();
             this.checkRaycast();
             this.updateLayerFades();
+            this.updateSatelliteLabel();
             this.renderer.render(this.scene, this.camera);
+            this.css2dRenderer.render(this.scene, this.camera);
         } catch (error) {
             handleError('Animation frame', error);
         }
@@ -2060,7 +2238,9 @@ export class StarlinkTracker {
             const worldPerPx = (2 * Math.tan(fovY / 2) * camDist) / vh;
             // Allow a small extra-pixel buffer so the cursor doesn't have to be
             // perfectly centred on the dot.
-            this.raycaster.params.Points.threshold = (this.pointSize + 2) * worldPerPx;
+            // Bump the multiplier when very close to make picking more forgiving
+            const closeBoost = camDist < 2 ? 2 : 1;
+            this.raycaster.params.Points.threshold = (this.pointSize + 2) * worldPerPx * closeBoost;
 
             const hits = this.raycaster.intersectObjects(objs);
 
@@ -2833,6 +3013,17 @@ export class StarlinkTracker {
         }
         if (this.groundStationLine) {
             this.scene.remove(this.groundStationLine);
+        }
+
+        if (this._satLabel) {
+            this.scene.remove(this._satLabel);
+            this._satLabel = null;
+        }
+
+        if (this.css2dRenderer) {
+            if (this.css2dRenderer.domElement && this.css2dRenderer.domElement.parentNode) {
+                this.css2dRenderer.domElement.parentNode.removeChild(this.css2dRenderer.domElement);
+            }
         }
 
         if (this.renderer) {

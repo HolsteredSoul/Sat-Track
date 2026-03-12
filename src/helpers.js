@@ -226,3 +226,30 @@ export function loadObserverLocation() {
         return null;
     }
 }
+
+/**
+ * Saves the satellite label visibility preference.
+ * @param {boolean} enabled
+ */
+export function saveLabelsPreference(enabled) {
+    try {
+        localStorage.setItem('sat-track-labels', enabled ? '1' : '0');
+    } catch (e) {
+        // localStorage may be unavailable
+    }
+}
+
+/**
+ * Loads the saved labels preference.
+ * @param {boolean} defaultVal - Fallback value
+ * @returns {boolean}
+ */
+export function loadLabelsPreference(defaultVal = true) {
+    try {
+        const v = localStorage.getItem('sat-track-labels');
+        if (v === null) return defaultVal;
+        return v === '1';
+    } catch (e) {
+        return defaultVal;
+    }
+}
