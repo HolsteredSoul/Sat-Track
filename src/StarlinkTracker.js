@@ -916,6 +916,7 @@ export class StarlinkTracker {
         bindBtn('btn-follow', () => this.toggleFollowMode());
         bindBtn('btn-labels', () => this.toggleLabels());
         bindBtn('btn-reset-camera', () => this.resetCamera());
+        bindBtn('btn-refresh', () => this.handleRefresh());
 
         // Set initial active state for labels button
         const labelsBtn = document.getElementById('btn-labels');
@@ -1638,16 +1639,6 @@ export class StarlinkTracker {
                 return;
             }
 
-            // Mobile: cap satellite count
-            if (
-                this.isMobile &&
-                layerKey === 'starlink' &&
-                satData.length > CONSTANTS.MOBILE_MAX_SATELLITES
-            ) {
-                satData.length = CONSTANTS.MOBILE_MAX_SATELLITES;
-                satNames.length = CONSTANTS.MOBILE_MAX_SATELLITES;
-            }
-
             this.layerData[layerKey] = { satData, satNames };
             this.updateStatus(`${this.layers[layerKey].label}: ${sourceLabel}`, 'status-ok');
         } catch (error) {
@@ -1757,6 +1748,16 @@ export class StarlinkTracker {
         this.createLayerMeshes();
         this.rebuildSearchIndex();
         this.updateStatus('Data refreshed', 'status-ok');
+    }
+
+    async handleRefresh() {
+        const btn = document.getElementById('btn-refresh');
+        if (btn) btn.disabled = true;
+        try {
+            await this.refreshData();
+        } finally {
+            if (btn) btn.disabled = false;
+        }
     }
 
     // ========================================================================
