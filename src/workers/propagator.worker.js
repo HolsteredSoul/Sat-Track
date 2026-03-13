@@ -12,7 +12,7 @@
 
 import * as satellite from 'satellite.js';
 import { CONSTANTS } from '../constants.js';
-import { computeShadowFactorKm, calculateSunDirection, SimulatedOrbit } from '../core.js';
+import { computeShadowFactorKm, calculateSunDirection, SimulatedOrbit, calculateElevation } from '../core.js';
 
 // Worker-side layer storage: { [key]: { satData: [], satNames: [], color: {r,g,b} } }
 let workerLayers = {};
@@ -69,7 +69,8 @@ function handleInit(msg) {
 // ============================================================================
 
 function handleUpdate(msg) {
-    const { simDateMs, selected, hovered, layerActive, starlinkActiveCount } = msg;
+    const { simDateMs, selected, hovered, layerActive, starlinkActiveCount,
+            observer, highlightVisible, minElevation } = msg;
 
     const simDate = new Date(simDateMs);
     const gmst = satellite.gstime(simDate);
@@ -120,6 +121,7 @@ function handleUpdate(msg) {
                 vY = 0,
                 vZ = 0;
             let valid = false;
+            let eciPos = null;
 
             if (sat.isSimulated) {
                 const pos = sat.getPos(simDate);
@@ -131,6 +133,7 @@ function handleUpdate(msg) {
                 try {
                     const pv = satellite.propagate(sat, simDate);
                     if (pv.position && !isNaN(pv.position.x)) {
+                        eciPos = pv.position;
                         vX = pv.velocity.x;
                         vY = pv.velocity.y;
                         vZ = pv.velocity.z;
@@ -208,6 +211,21 @@ function handleUpdate(msg) {
                 colors[pi3] = baseC.r * inv + darkC.r * t;
                 colors[pi3 + 1] = baseC.g * inv + darkC.g * t;
                 colors[pi3 + 2] = baseC.b * inv + darkC.b * t;
+
+                // Visibility highlight: overrides shadow blend when enabled
+                if (highlightVisible && observer && eciPos) {
+                    const elev = calculateElevation(observer, eciPos, gmst);
+                    if (elev >= minElevation) {
+                        const hc = CONSTANTS.VIS_HIGHLIGHT_COLOR;
+                        colors[pi3] = hc.r;
+                        colors[pi3 + 1] = hc.g;
+                        colors[pi3 + 2] = hc.b;
+                    } else {
+                        colors[pi3] *= CONSTANTS.VIS_DIM_FACTOR;
+                        colors[pi3 + 1] *= CONSTANTS.VIS_DIM_FACTOR;
+                        colors[pi3 + 2] *= CONSTANTS.VIS_DIM_FACTOR;
+                    }
+                }
             }
         }
 
