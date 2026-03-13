@@ -1639,16 +1639,6 @@ export class StarlinkTracker {
                 return;
             }
 
-            // Mobile: cap satellite count
-            if (
-                this.isMobile &&
-                layerKey === 'starlink' &&
-                satData.length > CONSTANTS.MOBILE_MAX_SATELLITES
-            ) {
-                satData.length = CONSTANTS.MOBILE_MAX_SATELLITES;
-                satNames.length = CONSTANTS.MOBILE_MAX_SATELLITES;
-            }
-
             this.layerData[layerKey] = { satData, satNames };
             this.updateStatus(`${this.layers[layerKey].label}: ${sourceLabel}`, 'status-ok');
         } catch (error) {
