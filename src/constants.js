@@ -72,6 +72,10 @@ export const CONSTANTS = {
     // === Eclipse Detection Thresholds ===
     ECLIPSE_DIM_FACTOR: 0.3,
 
+    // === Visibility Highlight ===
+    VIS_HIGHLIGHT_COLOR: { r: 0.0, g: 1.0, b: 0.75 }, // bright cyan-green for visible sats
+    VIS_DIM_FACTOR: 0.25,                               // dim non-visible sats to 25% brightness
+
     // === Mobile Performance ===
     MOBILE_STAR_COUNT: 800,
     MOBILE_PHYSICS_HZ: 15,

@@ -181,6 +181,9 @@ export class StarlinkTracker {
         this.hovered = null;
         this.selected = null;
 
+        // === Visibility Highlighting ===
+        this.highlightVisible = false;
+
         // === Event Handler References ===
         this._boundHandlers = {};
 
@@ -220,6 +223,7 @@ export class StarlinkTracker {
             minElDisplay: document.getElementById('min-el-display'),
             selectedPassPanel: document.getElementById('selected-pass-panel'),
             passTableContainer: document.getElementById('pass-table-container'),
+            toggleVisHighlight: document.getElementById('toggle-vis-highlight'),
             inputDms: document.getElementById('input-dms'),
             inputLat: document.getElementById('input-lat'),
             inputLon: document.getElementById('input-lon'),
@@ -975,6 +979,17 @@ export class StarlinkTracker {
                 }
             };
             this.ui.minElSlider.addEventListener('input', this._boundHandlers.minElInput);
+        }
+
+        // Visibility highlight toggle
+        if (this.ui.toggleVisHighlight) {
+            this._boundHandlers.visHighlightChange = () => {
+                this.updateStarlinkVisibilityHighlights();
+            };
+            this.ui.toggleVisHighlight.addEventListener(
+                'change',
+                this._boundHandlers.visHighlightChange
+            );
         }
 
         // Visible count scope toggle
@@ -1898,7 +1913,18 @@ export class StarlinkTracker {
                         ? { layer: this.hovered.layer, index: this.hovered.index }
                         : null,
                     layerActive,
-                    starlinkActiveCount: this._getStarlinkActiveCount()
+                    starlinkActiveCount: this._getStarlinkActiveCount(),
+                    observer: this.observerLocation
+                        ? {
+                              lat: this.observerLocation.lat * (Math.PI / 180),
+                              lon: this.observerLocation.lon * (Math.PI / 180),
+                              alt: 0
+                          }
+                        : null,
+                    highlightVisible: this.highlightVisible,
+                    minElevation: this.ui.minElSlider
+                        ? parseFloat(this.ui.minElSlider.value)
+                        : CONSTANTS.PASS_MIN_ELEVATION_DEG
                 });
             } else if (!this.workerAvailable) {
                 this._updatePhysicsSync(simDate);
@@ -1922,6 +1948,19 @@ export class StarlinkTracker {
                 dark = 0;
             let issPosition = null;
             let issShadow = 0;
+
+            // Visibility highlight setup
+            const syncHighlight = this.highlightVisible && !!this.observerLocation;
+            const syncMinEl = this.ui.minElSlider
+                ? parseFloat(this.ui.minElSlider.value)
+                : CONSTANTS.PASS_MIN_ELEVATION_DEG;
+            const syncObserver = syncHighlight
+                ? {
+                      lat: this.observerLocation.lat * (Math.PI / 180),
+                      lon: this.observerLocation.lon * (Math.PI / 180),
+                      alt: 0
+                  }
+                : null;
 
             for (const layerKey of this.layerOrder) {
                 const mesh = this.layerMeshes[layerKey];
@@ -1955,6 +1994,7 @@ export class StarlinkTracker {
                 for (let i = 0; i < activeCount; i++) {
                     const sat = layer.satData[i];
                     let x, y, z, vX, vY, vZ;
+                    let eciPos = null;
 
                     if (sat.isSimulated) {
                         const pos = sat.getPos(simDate);
@@ -1965,6 +2005,7 @@ export class StarlinkTracker {
                         try {
                             const pv = satellite.propagate(sat, simDate);
                             if (pv.position && !isNaN(pv.position.x)) {
+                                eciPos = pv.position;
                                 vX = pv.velocity.x;
                                 vY = pv.velocity.y;
                                 vZ = pv.velocity.z;
@@ -2038,9 +2079,25 @@ export class StarlinkTracker {
                         );
                     } else {
                         const t = Math.pow(shadow, CONSTANTS.SHADOW_COLOR_EXPONENT);
-                        const r = baseC.r * (1 - t) + darkC.r * t;
-                        const g = baseC.g * (1 - t) + darkC.g * t;
-                        const b = baseC.b * (1 - t) + darkC.b * t;
+                        let r = baseC.r * (1 - t) + darkC.r * t;
+                        let g = baseC.g * (1 - t) + darkC.g * t;
+                        let b = baseC.b * (1 - t) + darkC.b * t;
+
+                        // Visibility highlight: overrides shadow blend when enabled
+                        if (syncHighlight && syncObserver && eciPos) {
+                            const elev = calculateElevation(syncObserver, eciPos, gmst);
+                            if (elev >= syncMinEl) {
+                                const hc = CONSTANTS.VIS_HIGHLIGHT_COLOR;
+                                r = hc.r;
+                                g = hc.g;
+                                b = hc.b;
+                            } else {
+                                r *= CONSTANTS.VIS_DIM_FACTOR;
+                                g *= CONSTANTS.VIS_DIM_FACTOR;
+                                b *= CONSTANTS.VIS_DIM_FACTOR;
+                            }
+                        }
+
                         colors.setXYZ(i, r, g, b);
                     }
                 }
@@ -2790,6 +2847,15 @@ export class StarlinkTracker {
         const label = scopeLabel ? `${count} ${scopeLabel} visible now` : `${count} visible now`;
         this.ui.visibleCountText.textContent = label;
         this.ui.visibleCountText.style.color = count > 0 ? 'var(--good)' : 'var(--ui-subtext)';
+    }
+
+    /**
+     * Syncs highlight state from the checkbox and forces a visible-count refresh.
+     * Called when the "Highlight visible sats" checkbox changes.
+     */
+    updateStarlinkVisibilityHighlights() {
+        this.highlightVisible = !!this.ui.toggleVisHighlight?.checked;
+        this._lastVisibleCountMs = 0;
     }
 
     // ========================================================================
