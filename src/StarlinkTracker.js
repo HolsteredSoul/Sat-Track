@@ -916,6 +916,7 @@ export class StarlinkTracker {
         bindBtn('btn-follow', () => this.toggleFollowMode());
         bindBtn('btn-labels', () => this.toggleLabels());
         bindBtn('btn-reset-camera', () => this.resetCamera());
+        bindBtn('btn-refresh', () => this.handleRefresh());
 
         // Set initial active state for labels button
         const labelsBtn = document.getElementById('btn-labels');
@@ -1757,6 +1758,16 @@ export class StarlinkTracker {
         this.createLayerMeshes();
         this.rebuildSearchIndex();
         this.updateStatus('Data refreshed', 'status-ok');
+    }
+
+    async handleRefresh() {
+        const btn = document.getElementById('btn-refresh');
+        if (btn) btn.disabled = true;
+        try {
+            await this.refreshData();
+        } finally {
+            if (btn) btn.disabled = false;
+        }
     }
 
     // ========================================================================

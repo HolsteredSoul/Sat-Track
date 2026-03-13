@@ -400,6 +400,12 @@
             transform: scale(1.02);
         }
 
+        .action-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
         .action-btn-icon {
             display: block;
             font-size: 16px;
@@ -784,6 +790,10 @@
         <button class="action-btn" id="btn-reset-camera" aria-label="Reset camera to default view">
             <span class="action-btn-icon" aria-hidden="true">&#8634;</span>
             Reset
+        </button>
+        <button class="action-btn" id="btn-refresh" aria-label="Refresh satellite data">
+            <span class="action-btn-icon" aria-hidden="true">&#128260;</span>
+            Refresh
         </button>
     </div>
     <button id="btn-manual-toggle" aria-label="Enter location manually">Enter coordinates manually</button>
