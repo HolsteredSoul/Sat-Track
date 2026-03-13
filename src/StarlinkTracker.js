@@ -977,6 +977,7 @@ export class StarlinkTracker {
                         parseFloat(e.target.value)
                     );
                 }
+                this.updateStarlinkVisibilityHighlights(); // keep highlight in sync with slider
             };
             this.ui.minElSlider.addEventListener('input', this._boundHandlers.minElInput);
         }
@@ -3147,6 +3148,15 @@ export class StarlinkTracker {
         }
         if (this._boundHandlers.dmsInput && this.ui.inputDms) {
             this.ui.inputDms.removeEventListener('input', this._boundHandlers.dmsInput);
+        }
+        if (this._boundHandlers.minElInput && this.ui.minElSlider) {
+            this.ui.minElSlider.removeEventListener('input', this._boundHandlers.minElInput);
+        }
+        if (this._boundHandlers.visHighlightChange && this.ui.toggleVisHighlight) {
+            this.ui.toggleVisHighlight.removeEventListener(
+                'change',
+                this._boundHandlers.visHighlightChange
+            );
         }
 
         // Action buttons
