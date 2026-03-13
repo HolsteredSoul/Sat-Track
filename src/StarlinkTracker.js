@@ -2513,19 +2513,40 @@ export class StarlinkTracker {
      * @returns {THREE.ConeGeometry}
      */
     _buildViewingConeGeometry(minEl) {
-        const halfAngle = (90 - Math.min(minEl, 89.9)) * (Math.PI / 180);
-        const height = 3.0; // scene units (~3000 km, covers LEO)
-        const radius = height * Math.tan(halfAngle);
-        // ConeGeometry default: tip at y=+h/2, base at y=-h/2
-        // Flip then translate so tip sits at local origin, cone opens in +Y
-        const geo = new THREE.ConeGeometry(radius, height, 64, 1, true); // open (no base cap)
-        geo.rotateZ(Math.PI); // tip → y=-h/2, base → y=+h/2
-        geo.translate(0, height / 2, 0); // tip → y=0, base → y=+h
+        const halfAngle = Math.min(90 - minEl, 80) * (Math.PI / 180);
+        // Height capped at ~600 km in scene units — just above Starlink altitude
+        const height = 0.6;
+        // Radius capped so the cone never spans more than ~1.5× Earth radius visually
+        const radius = Math.min(height * Math.tan(halfAngle), 2.5);
+
+        // Build as line segments (wireframe): spokes from tip + base ring.
+        // Tip is at local origin (0,0,0); base ring is at y=+height.
+        const spokeCount = 12;
+        const ringSegments = 64;
+        const verts = [];
+
+        // Spokes: tip → base rim
+        for (let i = 0; i < spokeCount; i++) {
+            const a = (i / spokeCount) * Math.PI * 2;
+            verts.push(0, 0, 0);
+            verts.push(radius * Math.cos(a), height, radius * Math.sin(a));
+        }
+
+        // Base ring
+        for (let i = 0; i < ringSegments; i++) {
+            const a1 = (i / ringSegments) * Math.PI * 2;
+            const a2 = ((i + 1) / ringSegments) * Math.PI * 2;
+            verts.push(radius * Math.cos(a1), height, radius * Math.sin(a1));
+            verts.push(radius * Math.cos(a2), height, radius * Math.sin(a2));
+        }
+
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(verts), 3));
         return geo;
     }
 
     /**
-     * Creates (or recreates) the translucent viewing-cone mesh and adds it to the scene.
+     * Creates (or recreates) the wireframe viewing-cone and adds it to the scene.
      * Should be called whenever the observer location is set or changed.
      */
     setupViewingCone() {
@@ -2542,14 +2563,12 @@ export class StarlinkTracker {
             : CONSTANTS.PASS_MIN_ELEVATION_DEG;
 
         const geo = this._buildViewingConeGeometry(minEl);
-        const mat = new THREE.MeshBasicMaterial({
+        const mat = new THREE.LineBasicMaterial({
             color: 0xff4444,
             transparent: true,
-            opacity: 0.18,
-            side: THREE.DoubleSide,
-            depthWrite: false
+            opacity: 0.7
         });
-        this.viewingConeMesh = new THREE.Mesh(geo, mat);
+        this.viewingConeMesh = new THREE.LineSegments(geo, mat);
         this.scene.add(this.viewingConeMesh);
         this._positionViewingCone();
     }
