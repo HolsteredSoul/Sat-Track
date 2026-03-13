@@ -969,7 +969,9 @@ export class StarlinkTracker {
                 if (this.selected) this.predictPasses(this.selected.layer, this.selected.index);
                 if (this.viewingConeMesh) {
                     this.viewingConeMesh.geometry.dispose();
-                    this.viewingConeMesh.geometry = this._buildViewingConeGeometry(parseFloat(e.target.value));
+                    this.viewingConeMesh.geometry = this._buildViewingConeGeometry(
+                        parseFloat(e.target.value)
+                    );
                 }
             };
             this.ui.minElSlider.addEventListener('input', this._boundHandlers.minElInput);
@@ -2517,7 +2519,7 @@ export class StarlinkTracker {
         // ConeGeometry default: tip at y=+h/2, base at y=-h/2
         // Flip then translate so tip sits at local origin, cone opens in +Y
         const geo = new THREE.ConeGeometry(radius, height, 64, 1, true); // open (no base cap)
-        geo.rotateZ(Math.PI);            // tip → y=-h/2, base → y=+h/2
+        geo.rotateZ(Math.PI); // tip → y=-h/2, base → y=+h/2
         geo.translate(0, height / 2, 0); // tip → y=0, base → y=+h
         return geo;
     }
@@ -2545,7 +2547,7 @@ export class StarlinkTracker {
             transparent: true,
             opacity: 0.18,
             side: THREE.DoubleSide,
-            depthWrite: false,
+            depthWrite: false
         });
         this.viewingConeMesh = new THREE.Mesh(geo, mat);
         this.scene.add(this.viewingConeMesh);
@@ -2568,10 +2570,7 @@ export class StarlinkTracker {
         this.viewingConeMesh.position.set(x, y, z);
         // Orient local +Y axis to point radially outward from Earth centre
         const outward = new THREE.Vector3(x, y, z).normalize();
-        this.viewingConeMesh.quaternion.setFromUnitVectors(
-            new THREE.Vector3(0, 1, 0),
-            outward
-        );
+        this.viewingConeMesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), outward);
     }
 
     // ========================================================================
