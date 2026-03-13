@@ -803,9 +803,9 @@ export class StarlinkTracker {
                     const p = hits[0].point;
                     const r = p.length();
                     const lat = Math.asin(p.y / r) * (180 / Math.PI);
-                    // atan2(z, -x) extracts geographic longitude directly from scene space
-                    // (satellite/Earth scene coords: x = -cos(lon)*cos(lat), z = sin(lon)*cos(lat)).
-                    const lonRaw = Math.atan2(p.z, -p.x) * (180 / Math.PI);
+                    // atan2(x, z) extracts geographic longitude from scene space
+                    // (scene coords: x = cos(lat)*sin(lon), z = cos(lat)*cos(lon)).
+                    const lonRaw = Math.atan2(p.x, p.z) * (180 / Math.PI);
                     const lon = ((((lonRaw + 180) % 360) + 360) % 360) - 180;
                     this._exitLocationPlacementMode();
                     this._applyObserverLocation(lat, lon);
@@ -2016,9 +2016,9 @@ export class StarlinkTracker {
                                     CONSTANTS.RENDER_SCALE;
                                 const phi = gd.latitude;
                                 const theta = gd.longitude;
-                                x = -alt * Math.cos(phi) * Math.cos(theta);
+                                x = alt * Math.cos(phi) * Math.sin(theta);
                                 y = alt * Math.sin(phi);
-                                z = alt * Math.cos(phi) * Math.sin(theta);
+                                z = alt * Math.cos(phi) * Math.cos(theta);
                             } else {
                                 positions.setXYZ(i, 0, 0, 0);
                                 continue;
@@ -2172,9 +2172,9 @@ export class StarlinkTracker {
                             const gd = satellite.eciToGeodetic(pv.position, gmst);
                             const alt =
                                 (CONSTANTS.EARTH_RADIUS_KM + gd.height) * CONSTANTS.RENDER_SCALE;
-                            x = -alt * Math.cos(gd.latitude) * Math.cos(gd.longitude);
+                            x = alt * Math.cos(gd.latitude) * Math.sin(gd.longitude);
                             y = alt * Math.sin(gd.latitude);
-                            z = alt * Math.cos(gd.latitude) * Math.sin(gd.longitude);
+                            z = alt * Math.cos(gd.latitude) * Math.cos(gd.longitude);
                         }
                     }
                 } catch (e) {
@@ -2456,13 +2456,12 @@ export class StarlinkTracker {
     /** Rotates the camera so the placed marker faces the viewer. */
     _panCameraToMarker(lat, lon) {
         const lat_r = lat * (Math.PI / 180);
-        // Add 180° to account for earthGroup.rotation.y = -π/2 (visual Earth offset)
-        const lon_r = (lon + 180) * (Math.PI / 180);
-        // Unit vector toward the marker in scene (ECEF) space
+        const lon_r = lon * (Math.PI / 180);
+        // Unit vector toward the marker in scene space
         const dir = new THREE.Vector3(
-            Math.cos(lat_r) * Math.cos(lon_r),
+            Math.cos(lat_r) * Math.sin(lon_r),
             Math.sin(lat_r),
-            -Math.cos(lat_r) * Math.sin(lon_r)
+            Math.cos(lat_r) * Math.cos(lon_r)
         );
         const dist = this.camera.position.length();
         this.camera.position.copy(dir.multiplyScalar(dist));
@@ -2536,13 +2535,12 @@ export class StarlinkTracker {
         if (!this.observerLocation || !this.groundStationMarker) return;
 
         const lat = this.observerLocation.lat * (Math.PI / 180);
-        // Add 180° to account for earthGroup.rotation.y = -π/2 (visual Earth offset)
-        const lon = (this.observerLocation.lon + 180) * (Math.PI / 180);
+        const lon = this.observerLocation.lon * (Math.PI / 180);
         const alt = CONSTANTS.EARTH_RADIUS_KM * CONSTANTS.RENDER_SCALE * 1.02;
 
-        const x = alt * Math.cos(lat) * Math.cos(lon);
+        const x = alt * Math.cos(lat) * Math.sin(lon);
         const y = alt * Math.sin(lat);
-        const z = -alt * Math.cos(lat) * Math.sin(lon);
+        const z = alt * Math.cos(lat) * Math.cos(lon);
 
         this.groundStationMarker.position.set(x, y, z);
 
@@ -2638,12 +2636,11 @@ export class StarlinkTracker {
     _positionViewingCone() {
         if (!this.viewingConeMesh || !this.observerLocation) return;
         const lat = this.observerLocation.lat * (Math.PI / 180);
-        // Add 180° to account for earthGroup.rotation.y = -π/2 (visual Earth offset)
-        const lon = (this.observerLocation.lon + 180) * (Math.PI / 180);
+        const lon = this.observerLocation.lon * (Math.PI / 180);
         const alt = CONSTANTS.EARTH_RADIUS_KM * CONSTANTS.RENDER_SCALE * 1.02;
-        const x = alt * Math.cos(lat) * Math.cos(lon);
+        const x = alt * Math.cos(lat) * Math.sin(lon);
         const y = alt * Math.sin(lat);
-        const z = -alt * Math.cos(lat) * Math.sin(lon);
+        const z = alt * Math.cos(lat) * Math.cos(lon);
         this.viewingConeMesh.position.set(x, y, z);
         // Orient local +Y axis to point radially outward from Earth centre
         const outward = new THREE.Vector3(x, y, z).normalize();
