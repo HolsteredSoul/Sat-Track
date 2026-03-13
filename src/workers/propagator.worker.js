@@ -6,7 +6,8 @@
  *
  * Message protocol:
  *   IN  { type: 'init',   layers: { [key]: { satData, simParams, color, satNames } } }
- *   IN  { type: 'update', simDateMs, selected, hovered, layerActive, starlinkActiveCount }
+ *   IN  { type: 'update', simDateMs, selected, hovered, layerActive, starlinkActiveCount,
+ *                        observer, highlightVisible, minElevation }
  *   OUT { type: 'result', layers, issPos, issShadow, tooltipData, stats, simDateMs }
  */
 
