@@ -165,6 +165,7 @@ export class StarlinkTracker {
         // === Observer / Ground Station ===
         this.observerLocation = null; // { lat, lon } in degrees
         this.groundStationMarker = null;
+        this.viewingConeMesh = null;
         this.locationPlacementMode = false;
 
         // === Theme ===
@@ -966,6 +967,10 @@ export class StarlinkTracker {
                 this._lastVisibleCountMs = 0;
                 if (this.currentSimDate) this._updateVisibleCount(this.currentSimDate);
                 if (this.selected) this.predictPasses(this.selected.layer, this.selected.index);
+                if (this.viewingConeMesh) {
+                    this.viewingConeMesh.geometry.dispose();
+                    this.viewingConeMesh.geometry = this._buildViewingConeGeometry(parseFloat(e.target.value));
+                }
             };
             this.ui.minElSlider.addEventListener('input', this._boundHandlers.minElInput);
         }
@@ -2372,6 +2377,7 @@ export class StarlinkTracker {
         this.observerLocation = { lat, lon };
         this.setupGroundStationMarker();
         this.updateGroundStationMarker(); // position immediately, don't wait for physics tick
+        this.setupViewingCone();
         saveObserverLocation({ lat, lon });
         this.updateStatus(
             `Observer: ${lat.toFixed(2)}\u00b0, ${lon.toFixed(2)}\u00b0`,
@@ -2491,6 +2497,81 @@ export class StarlinkTracker {
             posArr[5] = z * spike;
             this.groundStationLine.geometry.attributes.position.needsUpdate = true;
         }
+    }
+
+    // ========================================================================
+    // VIEWING CONE
+    // ========================================================================
+
+    /**
+     * Builds a ConeGeometry with the tip at local origin, opening in the +Y direction.
+     * The cone half-angle from the zenith axis equals (90 - minEl) degrees, so it
+     * represents the sky volume visible above the minimum elevation threshold.
+     * @param {number} minEl - Minimum elevation in degrees (0–90)
+     * @returns {THREE.ConeGeometry}
+     */
+    _buildViewingConeGeometry(minEl) {
+        const halfAngle = (90 - Math.min(minEl, 89.9)) * (Math.PI / 180);
+        const height = 3.0; // scene units (~3000 km, covers LEO)
+        const radius = height * Math.tan(halfAngle);
+        // ConeGeometry default: tip at y=+h/2, base at y=-h/2
+        // Flip then translate so tip sits at local origin, cone opens in +Y
+        const geo = new THREE.ConeGeometry(radius, height, 64, 1, true); // open (no base cap)
+        geo.rotateZ(Math.PI);            // tip → y=-h/2, base → y=+h/2
+        geo.translate(0, height / 2, 0); // tip → y=0, base → y=+h
+        return geo;
+    }
+
+    /**
+     * Creates (or recreates) the translucent viewing-cone mesh and adds it to the scene.
+     * Should be called whenever the observer location is set or changed.
+     */
+    setupViewingCone() {
+        if (this.viewingConeMesh) {
+            this.scene.remove(this.viewingConeMesh);
+            this.viewingConeMesh.geometry.dispose();
+            this.viewingConeMesh.material.dispose();
+            this.viewingConeMesh = null;
+        }
+        if (!this.observerLocation) return;
+
+        const minEl = this.ui.minElSlider
+            ? parseFloat(this.ui.minElSlider.value)
+            : CONSTANTS.PASS_MIN_ELEVATION_DEG;
+
+        const geo = this._buildViewingConeGeometry(minEl);
+        const mat = new THREE.MeshBasicMaterial({
+            color: 0xff4444,
+            transparent: true,
+            opacity: 0.18,
+            side: THREE.DoubleSide,
+            depthWrite: false,
+        });
+        this.viewingConeMesh = new THREE.Mesh(geo, mat);
+        this.scene.add(this.viewingConeMesh);
+        this._positionViewingCone();
+    }
+
+    /**
+     * Repositions and reorients the viewing cone to match the current observer location.
+     * Uses the same coordinate convention as updateGroundStationMarker().
+     */
+    _positionViewingCone() {
+        if (!this.viewingConeMesh || !this.observerLocation) return;
+        const lat = this.observerLocation.lat * (Math.PI / 180);
+        // Subtract 90° to match earthGroup.rotation.y = -π/2 visual offset
+        const lon = (this.observerLocation.lon - 90) * (Math.PI / 180);
+        const alt = CONSTANTS.EARTH_RADIUS_KM * CONSTANTS.RENDER_SCALE * 1.02;
+        const x = alt * Math.cos(lat) * Math.cos(lon);
+        const y = alt * Math.sin(lat);
+        const z = -alt * Math.cos(lat) * Math.sin(lon);
+        this.viewingConeMesh.position.set(x, y, z);
+        // Orient local +Y axis to point radially outward from Earth centre
+        const outward = new THREE.Vector3(x, y, z).normalize();
+        this.viewingConeMesh.quaternion.setFromUnitVectors(
+            new THREE.Vector3(0, 1, 0),
+            outward
+        );
     }
 
     // ========================================================================
@@ -3022,6 +3103,12 @@ export class StarlinkTracker {
         }
         if (this.groundStationLine) {
             this.scene.remove(this.groundStationLine);
+        }
+        if (this.viewingConeMesh) {
+            this.scene.remove(this.viewingConeMesh);
+            if (this.viewingConeMesh.geometry) this.viewingConeMesh.geometry.dispose();
+            if (this.viewingConeMesh.material) this.viewingConeMesh.material.dispose();
+            this.viewingConeMesh = null;
         }
 
         if (this._satLabel) {
