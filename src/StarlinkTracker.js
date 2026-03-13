@@ -165,7 +165,6 @@ export class StarlinkTracker {
         // === Observer / Ground Station ===
         this.observerLocation = null; // { lat, lon } in degrees
         this.groundStationMarker = null;
-        this.viewingConeMesh = null;
         this.locationPlacementMode = false;
 
         // === Theme ===
@@ -971,12 +970,6 @@ export class StarlinkTracker {
                 this._lastVisibleCountMs = 0;
                 if (this.currentSimDate) this._updateVisibleCount(this.currentSimDate);
                 if (this.selected) this.predictPasses(this.selected.layer, this.selected.index);
-                if (this.viewingConeMesh) {
-                    this.viewingConeMesh.geometry.dispose();
-                    this.viewingConeMesh.geometry = this._buildViewingConeGeometry(
-                        parseFloat(e.target.value)
-                    );
-                }
                 this.updateStarlinkVisibilityHighlights(); // keep highlight in sync with slider
             };
             this.ui.minElSlider.addEventListener('input', this._boundHandlers.minElInput);
@@ -2437,7 +2430,6 @@ export class StarlinkTracker {
         this.observerLocation = { lat, lon };
         this.setupGroundStationMarker();
         this.updateGroundStationMarker(); // position immediately, don't wait for physics tick
-        this.setupViewingCone();
         saveObserverLocation({ lat, lon });
         this.updateStatus(
             `Observer: ${lat.toFixed(2)}\u00b0, ${lon.toFixed(2)}\u00b0`,
@@ -2560,92 +2552,6 @@ export class StarlinkTracker {
     // ========================================================================
     // VIEWING CONE
     // ========================================================================
-
-    /**
-     * Builds a ConeGeometry with the tip at local origin, opening in the +Y direction.
-     * The cone half-angle from the zenith axis equals (90 - minEl) degrees, so it
-     * represents the sky volume visible above the minimum elevation threshold.
-     * @param {number} minEl - Minimum elevation in degrees (0–90)
-     * @returns {THREE.ConeGeometry}
-     */
-    _buildViewingConeGeometry(minEl) {
-        const halfAngle = Math.min(90 - minEl, 80) * (Math.PI / 180);
-        // Height capped at ~600 km in scene units — just above Starlink altitude
-        const height = 0.6;
-        // Radius capped so the cone never spans more than ~1.5× Earth radius visually
-        const radius = Math.min(height * Math.tan(halfAngle), 2.5);
-
-        // Build as line segments (wireframe): spokes from tip + base ring.
-        // Tip is at local origin (0,0,0); base ring is at y=+height.
-        const spokeCount = 12;
-        const ringSegments = 64;
-        const verts = [];
-
-        // Spokes: tip → base rim
-        for (let i = 0; i < spokeCount; i++) {
-            const a = (i / spokeCount) * Math.PI * 2;
-            verts.push(0, 0, 0);
-            verts.push(radius * Math.cos(a), height, radius * Math.sin(a));
-        }
-
-        // Base ring
-        for (let i = 0; i < ringSegments; i++) {
-            const a1 = (i / ringSegments) * Math.PI * 2;
-            const a2 = ((i + 1) / ringSegments) * Math.PI * 2;
-            verts.push(radius * Math.cos(a1), height, radius * Math.sin(a1));
-            verts.push(radius * Math.cos(a2), height, radius * Math.sin(a2));
-        }
-
-        const geo = new THREE.BufferGeometry();
-        geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(verts), 3));
-        return geo;
-    }
-
-    /**
-     * Creates (or recreates) the wireframe viewing-cone and adds it to the scene.
-     * Should be called whenever the observer location is set or changed.
-     */
-    setupViewingCone() {
-        if (this.viewingConeMesh) {
-            this.scene.remove(this.viewingConeMesh);
-            this.viewingConeMesh.geometry.dispose();
-            this.viewingConeMesh.material.dispose();
-            this.viewingConeMesh = null;
-        }
-        if (!this.observerLocation) return;
-
-        const minEl = this.ui.minElSlider
-            ? parseFloat(this.ui.minElSlider.value)
-            : CONSTANTS.PASS_MIN_ELEVATION_DEG;
-
-        const geo = this._buildViewingConeGeometry(minEl);
-        const mat = new THREE.LineBasicMaterial({
-            color: 0xff4444,
-            transparent: true,
-            opacity: 0.7
-        });
-        this.viewingConeMesh = new THREE.LineSegments(geo, mat);
-        this.scene.add(this.viewingConeMesh);
-        this._positionViewingCone();
-    }
-
-    /**
-     * Repositions and reorients the viewing cone to match the current observer location.
-     * Uses the same coordinate convention as updateGroundStationMarker().
-     */
-    _positionViewingCone() {
-        if (!this.viewingConeMesh || !this.observerLocation) return;
-        const lat = this.observerLocation.lat * (Math.PI / 180);
-        const lon = this.observerLocation.lon * (Math.PI / 180);
-        const alt = CONSTANTS.EARTH_RADIUS_KM * CONSTANTS.RENDER_SCALE * 1.02;
-        const x = alt * Math.cos(lat) * Math.sin(lon);
-        const y = alt * Math.sin(lat);
-        const z = alt * Math.cos(lat) * Math.cos(lon);
-        this.viewingConeMesh.position.set(x, y, z);
-        // Orient local +Y axis to point radially outward from Earth centre
-        const outward = new THREE.Vector3(x, y, z).normalize();
-        this.viewingConeMesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), outward);
-    }
 
     // ========================================================================
     // PASS PREDICTION
@@ -3195,13 +3101,6 @@ export class StarlinkTracker {
         if (this.groundStationLine) {
             this.scene.remove(this.groundStationLine);
         }
-        if (this.viewingConeMesh) {
-            this.scene.remove(this.viewingConeMesh);
-            if (this.viewingConeMesh.geometry) this.viewingConeMesh.geometry.dispose();
-            if (this.viewingConeMesh.material) this.viewingConeMesh.material.dispose();
-            this.viewingConeMesh = null;
-        }
-
         if (this._satLabel) {
             this.scene.remove(this._satLabel);
             this._satLabel = null;
