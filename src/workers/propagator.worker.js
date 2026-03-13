@@ -143,9 +143,9 @@ function handleUpdate(msg) {
                             (CONSTANTS.EARTH_RADIUS_KM + gd.height) * CONSTANTS.RENDER_SCALE;
                         const phi = gd.latitude;
                         const theta = gd.longitude;
-                        x = alt * Math.cos(phi) * Math.cos(theta);
+                        x = -alt * Math.cos(phi) * Math.cos(theta);
                         y = alt * Math.sin(phi);
-                        z = -alt * Math.cos(phi) * Math.sin(theta);
+                        z = alt * Math.cos(phi) * Math.sin(theta);
                         valid = true;
                     }
                 } catch (_e) {
