@@ -1746,6 +1746,7 @@ export class StarlinkTracker {
         }
 
         this.createLayerMeshes();
+        this._postWorkerInit();
         this.rebuildSearchIndex();
         this.updateStatus('Data refreshed', 'status-ok');
     }
