@@ -57,10 +57,19 @@ export class StarlinkTracker {
             urls: {
                 earthDay: CONSTANTS.EARTH_DAY_TEXTURE,
                 earthNight: CONSTANTS.EARTH_NIGHT_TEXTURE,
+                earthDayHi: CONSTANTS.EARTH_DAY_TEXTURE_HI,
                 tle: CONSTANTS.TLE_URLS,
                 tleJson: CONSTANTS.TLE_JSON_URLS
             }
         };
+
+        // === Earth Texture LOD State ===
+        this._earthLodHigh = false;
+        this._earthLodCache = null;
+        this._earthLodLoading = false;
+        this._earthLodLastCheck = 0;
+        this._earthLodFailed = false;
+        this._earthLodDefaultDay = null;
 
         // === Layer Configuration ===
         this.layerOrder = [
@@ -76,49 +85,49 @@ export class StarlinkTracker {
         this.layers = {
             starlink: {
                 label: 'Starlink',
-                color: new THREE.Color(1, 1, 1),
+                color: new THREE.Color(1.0, 1.0, 1.0),
                 enabled: true,
                 source: 'loading'
             },
             iss: {
                 label: 'ISS',
-                color: new THREE.Color(1.0, 0.82, 0.4),
+                color: new THREE.Color(1.0, 0.8, 0.0),
                 enabled: true,
                 source: 'loading'
             },
             gps: {
                 label: 'GPS',
-                color: new THREE.Color(0.15, 0.95, 0.65),
+                color: new THREE.Color(0.0, 1.0, 0.5),
                 enabled: true,
                 source: 'loading'
             },
             galileo: {
                 label: 'Galileo',
-                color: new THREE.Color(0.55, 0.6, 0.7),
+                color: new THREE.Color(0.4, 0.7, 1.0),
                 enabled: true,
                 source: 'loading'
             },
             oneweb: {
                 label: 'OneWeb',
-                color: new THREE.Color(0.93, 0.28, 0.44),
+                color: new THREE.Color(1.0, 0.3, 0.3),
                 enabled: true,
                 source: 'loading'
             },
             iridium: {
                 label: 'Iridium',
-                color: new THREE.Color(0.6, 0.4, 1.0),
+                color: new THREE.Color(0.7, 0.3, 1.0),
                 enabled: true,
                 source: 'loading'
             },
             glonass: {
                 label: 'GLONASS',
-                color: new THREE.Color(1.0, 0.5, 0.2),
+                color: new THREE.Color(1.0, 0.5, 0.0),
                 enabled: true,
                 source: 'loading'
             },
             beidou: {
                 label: 'BeiDou',
-                color: new THREE.Color(0.9, 0.85, 0.2),
+                color: new THREE.Color(1.0, 0.4, 0.7),
                 enabled: true,
                 source: 'loading'
             }
@@ -141,7 +150,7 @@ export class StarlinkTracker {
         this.pauseWallTime = 0;
 
         // === Auto-Rotation State ===
-        this.autoRotateEnabled = true; // user preference; selection may override temporarily
+        this.autoRotateEnabled = false; // user preference; selection may override temporarily
 
         // === Visible Count State ===
         this._lastVisibleCountMs = 0;
@@ -181,7 +190,7 @@ export class StarlinkTracker {
         this.selected = null;
 
         // === Visibility Highlighting ===
-        this.highlightVisible = false;
+        this.highlightVisible = true;
 
         // === Event Handler References ===
         this._boundHandlers = {};
@@ -471,7 +480,7 @@ export class StarlinkTracker {
         this.controls.dampingFactor = CONSTANTS.DAMPING_FACTOR;
         this.controls.minDistance = CONSTANTS.CAMERA_MIN_DISTANCE;
         this.controls.maxDistance = CONSTANTS.CAMERA_MAX_DISTANCE;
-        this.controls.autoRotate = true;
+        this.controls.autoRotate = false;
         this.controls.autoRotateSpeed = CONSTANTS.AUTO_ROTATE_SPEED;
         this.controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
 
@@ -493,19 +502,16 @@ export class StarlinkTracker {
      */
     setupEarth() {
         const loader = new THREE.TextureLoader();
-        const maxAniso = this.renderer.capabilities.getMaxAnisotropy();
-        const setTexQuality = (tex) => {
-            tex.anisotropy = maxAniso;
-            tex.minFilter = THREE.LinearMipmapLinearFilter;
-            tex.magFilter = THREE.LinearFilter;
-            tex.needsUpdate = true;
-        };
+        this._texLoader = loader;
+        this._maxAniso = this.renderer.capabilities.getMaxAnisotropy();
 
         const initialUniforms = {
-            dayTexture: { value: loader.load(this.config.urls.earthDay, setTexQuality) },
-            nightTexture: { value: loader.load(this.config.urls.earthNight, setTexQuality) },
+            dayTexture: { value: loader.load(this.config.urls.earthDay, (tex) => this._configureTexture(tex)) },
+            nightTexture: { value: loader.load(this.config.urls.earthNight, (tex) => this._configureTexture(tex)) },
             sunDirection: { value: new THREE.Vector3(1, 0, 0) }
         };
+
+        this._earthLodDefaultDay = initialUniforms.dayTexture.value;
 
         this._disposables.push(initialUniforms.dayTexture.value);
         this._disposables.push(initialUniforms.nightTexture.value);
@@ -595,6 +601,62 @@ export class StarlinkTracker {
         this.scene.add(atmoMesh);
         this._disposables.push(atmoGeo);
         this._disposables.push(this.atmoMat);
+    }
+
+    /**
+     * Configures texture quality settings (anisotropy, filters).
+     */
+    _configureTexture(tex) {
+        tex.anisotropy = this._maxAniso;
+        tex.minFilter = THREE.LinearMipmapLinearFilter;
+        tex.magFilter = THREE.LinearFilter;
+        tex.needsUpdate = true;
+    }
+
+    /**
+     * Checks camera distance and swaps Earth day texture between default (4K) and high-res (8K).
+     */
+    _updateEarthLOD(camDist, now) {
+        if (!this.earthMat) return;
+        if (this.isMobile) return;
+        if (now - this._earthLodLastCheck < CONSTANTS.EARTH_LOD_CHECK_MS) return;
+        this._earthLodLastCheck = now;
+
+        const shouldBeHigh = camDist < CONSTANTS.EARTH_LOD_THRESHOLD;
+        const shouldBeLow = camDist > CONSTANTS.EARTH_LOD_THRESHOLD + CONSTANTS.EARTH_LOD_HYSTERESIS;
+
+        if (shouldBeHigh && !this._earthLodHigh && !this._earthLodLoading && !this._earthLodFailed) {
+            this._earthLodLoading = true;
+            const loader = this._texLoader;
+
+            const loadPromise = new Promise((resolve, reject) => {
+                loader.load(this.config.urls.earthDayHi, resolve, undefined, reject);
+            });
+
+            const timeout = new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('LOD texture load timeout')), CONSTANTS.EARTH_LOD_LOAD_TIMEOUT_MS)
+            );
+
+            Promise.race([loadPromise, timeout])
+                .then((dayHi) => {
+                    if (this.isDisposed) {
+                        dayHi.dispose();
+                        return;
+                    }
+                    this._configureTexture(dayHi);
+                    this._earthLodCache = dayHi;
+                    const currentDist = this.camera.position.length();
+                    if (currentDist < CONSTANTS.EARTH_LOD_THRESHOLD + CONSTANTS.EARTH_LOD_HYSTERESIS) {
+                        this.earthMat.uniforms.dayTexture.value = dayHi;
+                        this._earthLodHigh = true;
+                    }
+                })
+                .catch(() => { this._earthLodFailed = true; })
+                .finally(() => { this._earthLodLoading = false; });
+        } else if (shouldBeLow && this._earthLodHigh) {
+            this.earthMat.uniforms.dayTexture.value = this._earthLodDefaultDay;
+            this._earthLodHigh = false;
+        }
     }
 
     /**
@@ -1249,8 +1311,8 @@ export class StarlinkTracker {
         }
 
         const camDist = this.camera.position.length();
-        // Only show labels when zoomed in
-        if (camDist > 15) {
+        // Only show labels when zoomed in reasonably
+        if (camDist > 30) {
             this.removeSatelliteLabel();
             return;
         }
@@ -1273,7 +1335,7 @@ export class StarlinkTracker {
         if (!this._satLabel) {
             const div = document.createElement('div');
             div.style.cssText =
-                'color:white; background:rgba(0,0,0,0.75); padding:4px 8px; border-radius:4px; font-size:11px; font-family:system-ui,sans-serif; white-space:nowrap;';
+                'color:white; background:rgba(0,0,0,0.8); padding:4px 8px; border-radius:4px; font-size:11px; font-family:system-ui,sans-serif; white-space:nowrap; pointer-events:none; transform:translateY(-20px);';
             this._satLabel = new CSS2DObject(div);
             this.scene.add(this._satLabel);
         }
@@ -1815,14 +1877,38 @@ export class StarlinkTracker {
 
             geometry.setAttribute('position', new THREE.BufferAttribute(pos, 3));
             geometry.setAttribute('color', new THREE.BufferAttribute(color, 3));
+            const sizes = new Float32Array(count);
+            sizes.fill(1.0);
+            geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
 
-            const material = new THREE.PointsMaterial({
-                map: this.pointTex,
-                size: this.pointSize,
+            const material = new THREE.ShaderMaterial({
+                uniforms: {
+                    uBaseSize: { value: this.pointSize },
+                    opacity: { value: 1.0 }
+                },
+                vertexShader: `
+                    attribute float aSize;
+                    varying vec3 vColor;
+                    uniform float uBaseSize;
+                    void main() {
+                        vColor = color;
+                        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                        gl_PointSize = uBaseSize * aSize;
+                        gl_Position = projectionMatrix * mvPosition;
+                    }
+                `,
+                fragmentShader: `
+                    uniform float opacity;
+                    varying vec3 vColor;
+                    void main() {
+                        float dist = length(gl_PointCoord - vec2(0.5));
+                        if (dist > 0.5) discard;
+                        gl_FragColor = vec4(vColor, opacity);
+                    }
+                `,
                 vertexColors: true,
                 transparent: true,
-                alphaTest: 0.01,
-                sizeAttenuation: false
+                depthWrite: false
             });
 
             const points = new THREE.Points(geometry, material);
@@ -1835,7 +1921,7 @@ export class StarlinkTracker {
                 alpha: startEnabled ? 1.0 : 0.0,
                 target: startEnabled ? 1.0 : 0.0
             };
-            material.opacity = this.layerFade[layerKey].alpha;
+            material.uniforms.opacity.value = this.layerFade[layerKey].alpha;
 
             this.layerMeshes[layerKey] = points;
             this.scene.add(points);
@@ -1970,6 +2056,7 @@ export class StarlinkTracker {
 
                 const positions = mesh.geometry.attributes.position;
                 const colors = mesh.geometry.attributes.color;
+                const pointSizes = mesh.geometry.attributes.aSize;
 
                 const totalCount = layer.satData.length;
                 let activeCount = totalCount;
@@ -2078,19 +2165,20 @@ export class StarlinkTracker {
                         let g = baseC.g * (1 - t) + darkC.g * t;
                         let b = baseC.b * (1 - t) + darkC.b * t;
 
-                        // Visibility highlight: overrides shadow blend when enabled
+                        // Visibility highlight: visible sats keep full color + larger size,
+                        // non-visible sats are dimmed + smaller
                         if (syncHighlight && syncObserver && eciPos) {
                             const elev = calculateElevation(syncObserver, eciPos, gmst);
                             if (elev >= syncMinEl) {
-                                const hc = CONSTANTS.VIS_HIGHLIGHT_COLOR;
-                                r = hc.r;
-                                g = hc.g;
-                                b = hc.b;
+                                pointSizes.setX(i, 2.5);
                             } else {
                                 r *= CONSTANTS.VIS_DIM_FACTOR;
                                 g *= CONSTANTS.VIS_DIM_FACTOR;
                                 b *= CONSTANTS.VIS_DIM_FACTOR;
+                                pointSizes.setX(i, 0.5);
                             }
+                        } else {
+                            pointSizes.setX(i, 1.0);
                         }
 
                         colors.setXYZ(i, r, g, b);
@@ -2106,6 +2194,7 @@ export class StarlinkTracker {
                 mesh.geometry.setDrawRange(0, activeCount);
                 positions.needsUpdate = true;
                 colors.needsUpdate = true;
+                pointSizes.needsUpdate = true;
             }
 
             // Update ISS sprite
@@ -2239,7 +2328,11 @@ export class StarlinkTracker {
                 fade.alpha = fade.target;
                 if (fade.target === 0) mesh.visible = false;
             }
-            mesh.material.opacity = fade.alpha;
+            if (mesh.material.uniforms) {
+                mesh.material.uniforms.opacity.value = fade.alpha;
+            } else {
+                mesh.material.opacity = fade.alpha;
+            }
         }
     }
 
@@ -2252,10 +2345,26 @@ export class StarlinkTracker {
         try {
             // Scale control sensitivity to camera distance so close-up movement stays controllable.
             const camDist = this.camera.position.length();
-            const factor = Math.max(0.1, Math.min(5, camDist / 5));
-            this.controls.rotateSpeed = 0.8 * factor;
-            this.controls.panSpeed = 0.6 * factor;
-            this.controls.zoomSpeed = 0.8 * factor;
+            this._updateEarthLOD(camDist, performance.now());
+            const factor = Math.max(0.05, Math.min(3, (camDist * camDist) / 200));
+            this.controls.rotateSpeed = 0.5 * factor;
+            this.controls.panSpeed = 0.4 * factor;
+            this.controls.zoomSpeed = 0.6 * factor;
+            // Scale satellite point size inversely with camera distance so they
+            // remain visible when zoomed in close to the globe surface.
+            const refDist = CONSTANTS.CAMERA_INITIAL_DISTANCE;
+            const sizeScale = Math.max(1, (refDist / camDist) * (refDist / camDist));
+            const renderSize = this.pointSize * sizeScale;
+            Object.values(this.layerMeshes).forEach((mesh) => {
+                if (mesh && mesh.material && mesh.material.uniforms) {
+                    mesh.material.uniforms.uBaseSize.value = renderSize;
+                }
+            });
+            // Scale ground station marker with camera distance
+            if (this.groundStationMarker) {
+                const pinScale = camDist / refDist;
+                this.groundStationMarker.scale.setScalar(pinScale);
+            }
             this.updateCameraAnimation();
             this.updateFollowMode();
             this.controls.update();
@@ -2355,6 +2464,16 @@ export class StarlinkTracker {
      * Requests the user's location via browser geolocation and applies it.
      */
     requestGroundStation() {
+        // If location already set, go straight to click-to-reposition mode
+        if (this.observerLocation) {
+            this._enterLocationPlacementMode();
+            this.updateStatus(
+                'Click globe to move marker \u2014 or press Esc to cancel',
+                'status-warn'
+            );
+            return;
+        }
+
         this._enterLocationPlacementMode();
 
         if (!navigator.geolocation) {
@@ -2820,7 +2939,9 @@ export class StarlinkTracker {
     setPointSize(size) {
         this.pointSize = clampPointSize(size, CONSTANTS.POINT_SIZE_MIN, CONSTANTS.POINT_SIZE_MAX);
         Object.values(this.layerMeshes).forEach((mesh) => {
-            if (mesh && mesh.material) mesh.material.size = this.pointSize;
+            if (mesh && mesh.material && mesh.material.uniforms) {
+                mesh.material.uniforms.uBaseSize.value = this.pointSize;
+            }
         });
         if (this.ui.pixelSizeDisplay) this.ui.pixelSizeDisplay.textContent = this.pointSize;
         savePointSizePreference(this.pointSize);
@@ -3005,6 +3126,11 @@ export class StarlinkTracker {
      */
     dispose() {
         this.isDisposed = true;
+
+        if (this._earthLodCache) {
+            this._earthLodCache.dispose();
+            this._earthLodCache = null;
+        }
 
         if (this.worker) {
             this.worker.terminate();

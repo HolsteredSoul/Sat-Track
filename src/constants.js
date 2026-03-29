@@ -70,11 +70,11 @@ export const CONSTANTS = {
     ERROR_TOAST_DURATION_MS: 4000,
 
     // === Eclipse Detection Thresholds ===
-    ECLIPSE_DIM_FACTOR: 0.3,
+    ECLIPSE_DIM_FACTOR: 0.5,
 
     // === Visibility Highlight ===
-    VIS_HIGHLIGHT_COLOR: { r: 0.0, g: 1.0, b: 0.75 }, // bright cyan-green for visible sats
-    VIS_DIM_FACTOR: 0.25,                               // dim non-visible sats to 25% brightness
+    VIS_HIGHLIGHT_COLOR: { r: 0.2, g: 1.0, b: 0.2 },  // vivid green for visible sats
+    VIS_DIM_FACTOR: 0.5,                                // dim non-visible sats to 50% brightness
 
     // === Mobile Performance ===
     MOBILE_STAR_COUNT: 800,
@@ -92,6 +92,13 @@ export const CONSTANTS = {
     // === Texture URLs ===
     EARTH_DAY_TEXTURE: 'https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg',
     EARTH_NIGHT_TEXTURE: 'https://unpkg.com/three-globe/example/img/earth-night.jpg',
+    EARTH_DAY_TEXTURE_HI: '/textures/earth-day-8k.jpg',
+
+    // === Earth Texture LOD ===
+    EARTH_LOD_THRESHOLD: 14,
+    EARTH_LOD_HYSTERESIS: 2,
+    EARTH_LOD_CHECK_MS: 500,
+    EARTH_LOD_LOAD_TIMEOUT_MS: 15000,
 
     // === TLE Data Sources ===
     TLE_URLS: {
