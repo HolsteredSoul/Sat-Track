@@ -1702,6 +1702,7 @@ export class StarlinkTracker {
             const response = await fetch('https://worldtimeapi.org/api/timezone/Etc/UTC', {
                 signal: controller.signal
             });
+            if (!response.ok) throw new Error(response.statusText);
             const data = await response.json();
             this.referenceTime = new Date(data.utc_datetime).getTime();
             this.updateStatus('UTC Synced (Global API)', 'status-ok');
