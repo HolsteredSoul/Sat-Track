@@ -174,7 +174,7 @@ export class StarlinkTracker {
         // === Observer / Ground Station ===
         this.observerLocation = null; // { lat, lon } in degrees
         this.groundStationMarker = null;
-        this.locationPlacementMode = false;
+        this._leafletMap = null;
 
         // === Theme ===
         this.currentTheme = loadThemePreference();
@@ -856,24 +856,6 @@ export class StarlinkTracker {
             )
                 return;
 
-            // Click-to-place location marker when in placement mode
-            if (this.locationPlacementMode && !this.hovered) {
-                this.raycaster.setFromCamera(this.mouse, this.camera);
-                const hits = this.raycaster.intersectObject(this.earthGroup);
-                if (hits.length > 0) {
-                    const p = hits[0].point;
-                    const r = p.length();
-                    const lat = Math.asin(p.y / r) * (180 / Math.PI);
-                    // atan2(x, z) extracts geographic longitude from scene space
-                    // (scene coords: x = cos(lat)*sin(lon), z = cos(lat)*cos(lon)).
-                    const lonRaw = Math.atan2(p.x, p.z) * (180 / Math.PI);
-                    const lon = ((((lonRaw + 180) % 360) + 360) % 360) - 180;
-                    this._exitLocationPlacementMode();
-                    this._applyObserverLocation(lat, lon);
-                }
-                return;
-            }
-
             if (this.hovered) {
                 this.selectSatellite(this.hovered.layer, this.hovered.index);
             } else if (this.selected) {
@@ -887,10 +869,7 @@ export class StarlinkTracker {
             const inInput = !!e.target.closest('input, textarea');
 
             if (e.key === 'Escape') {
-                if (this.locationPlacementMode) {
-                    this._exitLocationPlacementMode();
-                    if (!this.observerLocation) this.updateStatus('Ready', 'status-ok');
-                } else if (
+                if (
                     this.ui.keyboardOverlay &&
                     this.ui.keyboardOverlay.classList.contains('visible')
                 ) {
@@ -2446,7 +2425,7 @@ export class StarlinkTracker {
                 }
             } else if (this.hovered) {
                 this.hovered = null;
-                document.body.style.cursor = this.locationPlacementMode ? 'crosshair' : 'default';
+                document.body.style.cursor = 'default';
                 if (!this.selected) {
                     this.ui.tooltip.style.display = 'none';
                 }
@@ -2461,42 +2440,134 @@ export class StarlinkTracker {
     // ========================================================================
 
     /**
-     * Requests the user's location via browser geolocation and applies it.
+     * Opens the Leaflet map picker modal for setting observer location.
      */
     requestGroundStation() {
-        // If location already set, go straight to click-to-reposition mode
+        this._openLocationPicker();
+    }
+
+    /**
+     * Opens the Leaflet map modal for picking a location.
+     */
+    _openLocationPicker() {
+        const modal = document.getElementById('map-modal');
+        const mapDiv = document.getElementById('leaflet-map');
+        const coordsDiv = document.getElementById('map-modal-coords');
+        const confirmBtn = document.getElementById('map-modal-confirm');
+        const cancelBtn = document.getElementById('map-modal-cancel');
+        const closeBtn = document.getElementById('map-modal-close');
+        if (!modal || !mapDiv) return;
+
+        modal.style.display = '';
+        let pendingLat = null;
+        let pendingLon = null;
+
+        // Determine initial center
+        const startLat = this.observerLocation ? this.observerLocation.lat : 20;
+        const startLon = this.observerLocation ? this.observerLocation.lon : 0;
+        const startZoom = this.observerLocation ? 6 : 2;
+
+        // Lazy-init or re-create the map (Leaflet doesn't like being in display:none)
+        if (this._leafletMap) {
+            this._leafletMap.remove();
+            this._leafletMap = null;
+        }
+
+        const map = L.map(mapDiv).setView([startLat, startLon], startZoom);
+        this._leafletMap = map;
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 18,
+            attribution: '&copy; OpenStreetMap'
+        }).addTo(map);
+
+        let marker = null;
+
+        // Place initial marker if location exists
         if (this.observerLocation) {
-            this._enterLocationPlacementMode();
-            this.updateStatus(
-                'Click globe to move marker \u2014 or press Esc to cancel',
-                'status-warn'
+            marker = L.marker([startLat, startLon], { draggable: true }).addTo(map);
+            pendingLat = startLat;
+            pendingLon = startLon;
+            coordsDiv.textContent = `${Math.abs(startLat).toFixed(4)}\u00b0${startLat >= 0 ? 'N' : 'S'}, ${Math.abs(startLon).toFixed(4)}\u00b0${startLon >= 0 ? 'E' : 'W'}`;
+            confirmBtn.disabled = false;
+
+            marker.on('dragend', () => {
+                const pos = marker.getLatLng();
+                pendingLat = pos.lat;
+                pendingLon = pos.lng;
+                coordsDiv.textContent = `${Math.abs(pos.lat).toFixed(4)}\u00b0${pos.lat >= 0 ? 'N' : 'S'}, ${Math.abs(pos.lng).toFixed(4)}\u00b0${pos.lng >= 0 ? 'E' : 'W'}`;
+            });
+        }
+
+        // Try geolocation to center map (non-blocking, won't move marker)
+        if (!this.observerLocation && navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    if (this._leafletMap === map) {
+                        map.setView([position.coords.latitude, position.coords.longitude], 6);
+                    }
+                },
+                () => { /* ignore errors */ },
+                { enableHighAccuracy: false, timeout: 5000 }
             );
-            return;
         }
 
-        this._enterLocationPlacementMode();
+        // Click map to place/move marker
+        map.on('click', (e) => {
+            pendingLat = e.latlng.lat;
+            pendingLon = e.latlng.lng;
+            coordsDiv.textContent = `${Math.abs(pendingLat).toFixed(4)}\u00b0${pendingLat >= 0 ? 'N' : 'S'}, ${Math.abs(pendingLon).toFixed(4)}\u00b0${pendingLon >= 0 ? 'E' : 'W'}`;
+            confirmBtn.disabled = false;
 
-        if (!navigator.geolocation) {
-            this._showManualLocationForm();
-            return;
-        }
+            if (marker) {
+                marker.setLatLng(e.latlng);
+            } else {
+                marker = L.marker(e.latlng, { draggable: true }).addTo(map);
+                marker.on('dragend', () => {
+                    const pos = marker.getLatLng();
+                    pendingLat = pos.lat;
+                    pendingLon = pos.lng;
+                    coordsDiv.textContent = `${Math.abs(pos.lat).toFixed(4)}\u00b0${pos.lat >= 0 ? 'N' : 'S'}, ${Math.abs(pos.lng).toFixed(4)}\u00b0${pos.lng >= 0 ? 'E' : 'W'}`;
+                });
+            }
+        });
 
-        navigator.geolocation.getCurrentPosition(
-            (position) => {
-                this._exitLocationPlacementMode();
-                this._applyObserverLocation(position.coords.latitude, position.coords.longitude);
-            },
-            (error) => {
-                handleError('Geolocation', error, true);
-                this.updateStatus(
-                    'Location unavailable \u2014 click globe or enter manually',
-                    'status-err'
-                );
-                this._showManualLocationForm();
-                // stay in placement mode so user can click the globe
-            },
-            { enableHighAccuracy: false, timeout: 10000 }
-        );
+        const closeModal = () => {
+            modal.style.display = 'none';
+            if (this._leafletMap) {
+                this._leafletMap.remove();
+                this._leafletMap = null;
+            }
+        };
+
+        // Wire up buttons
+        const onConfirm = () => {
+            if (pendingLat !== null && pendingLon !== null) {
+                this._applyObserverLocation(pendingLat, pendingLon);
+            }
+            closeModal();
+            cleanup();
+        };
+        const onCancel = () => { closeModal(); cleanup(); };
+        const onKeyDown = (e) => { if (e.key === 'Escape') { closeModal(); cleanup(); } };
+        const onBackdrop = (e) => { if (e.target === modal) { closeModal(); cleanup(); } };
+
+        const cleanup = () => {
+            confirmBtn.removeEventListener('click', onConfirm);
+            cancelBtn.removeEventListener('click', onCancel);
+            closeBtn.removeEventListener('click', onCancel);
+            window.removeEventListener('keydown', onKeyDown);
+            modal.removeEventListener('click', onBackdrop);
+        };
+
+        confirmBtn.addEventListener('click', onConfirm);
+        cancelBtn.addEventListener('click', onCancel);
+        closeBtn.addEventListener('click', onCancel);
+        window.addEventListener('keydown', onKeyDown);
+        modal.addEventListener('click', onBackdrop);
+
+        // Force Leaflet to recalculate size after modal is visible
+        setTimeout(() => map.invalidateSize(), 100);
     }
 
     /**
@@ -2589,23 +2660,6 @@ export class StarlinkTracker {
         }
     }
 
-    /** Enters click-to-place mode: crosshair cursor + status hint. */
-    _enterLocationPlacementMode() {
-        this.locationPlacementMode = true;
-        document.body.style.cursor = 'crosshair';
-        this.updateStatus(
-            'Click globe to place marker \u2014 or press Esc to cancel',
-            'status-warn'
-        );
-    }
-
-    /** Exits click-to-place mode and restores cursor. */
-    _exitLocationPlacementMode() {
-        this.locationPlacementMode = false;
-        if (!this.observerLocation) {
-            document.body.style.cursor = 'default';
-        }
-    }
 
     /**
      * Creates a 3D marker for the ground station on Earth's surface.

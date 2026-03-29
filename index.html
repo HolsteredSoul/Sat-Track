@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Sat-Track - Real-time Satellite Constellation Tracker</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
         /* === Dark Theme (default) === */
         :root {
@@ -567,6 +569,56 @@
                 text-align: center;
             }
         }
+        /* === Map Modal === */
+        #map-modal {
+            position: fixed; inset: 0; z-index: 10000;
+            background: rgba(0,0,0,0.7);
+            display: flex; align-items: center; justify-content: center;
+        }
+        #map-modal-content {
+            background: var(--ui-bg); border: 1px solid var(--ui-border);
+            border-radius: 16px; width: 90vw; max-width: 700px;
+            max-height: 90vh; display: flex; flex-direction: column;
+            overflow: hidden; box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+        }
+        #map-modal-header {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 14px 18px; border-bottom: 1px solid var(--ui-border);
+        }
+        #map-modal-header h3 { margin: 0; font-size: 15px; color: var(--ui-text); }
+        #map-modal-close {
+            background: none; border: none; color: var(--ui-subtext);
+            font-size: 22px; cursor: pointer; padding: 0 4px; line-height: 1;
+        }
+        #map-modal-close:hover { color: var(--ui-text); }
+        #leaflet-map { flex: 1; min-height: 350px; }
+        #map-modal-coords {
+            padding: 10px 18px; font-size: 13px; color: var(--ui-subtext);
+            border-top: 1px solid var(--ui-border); text-align: center;
+        }
+        #map-modal-actions {
+            display: flex; gap: 10px; padding: 12px 18px;
+            border-top: 1px solid var(--ui-border);
+        }
+        #map-modal-confirm, #map-modal-cancel {
+            flex: 1; padding: 10px; border-radius: 10px; border: none;
+            font-size: 13px; font-weight: 600; cursor: pointer;
+        }
+        #map-modal-confirm {
+            background: var(--accent); color: #fff;
+        }
+        #map-modal-confirm:disabled {
+            background: var(--ui-item-bg); color: var(--ui-subtext); cursor: default;
+        }
+        #map-modal-cancel {
+            background: var(--ui-item-bg); color: var(--ui-text);
+            border: 1px solid var(--ui-border);
+        }
+        #map-modal-cancel:hover { background: rgba(255,255,255,0.1); }
+        @media (max-width: 600px) {
+            #map-modal-content { width: 95vw; max-height: 95vh; border-radius: 12px; }
+            #leaflet-map { min-height: 250px; }
+        }
     </style>
 </head>
 <body>
@@ -913,5 +965,21 @@
 }
 </script>
 <script type="module" src="src/main.js"></script>
+
+<!-- Location Map Picker Modal -->
+<div id="map-modal" style="display:none;">
+    <div id="map-modal-content">
+        <div id="map-modal-header">
+            <h3>Set Your Location</h3>
+            <button id="map-modal-close" aria-label="Close">&times;</button>
+        </div>
+        <div id="leaflet-map"></div>
+        <div id="map-modal-coords">Click the map to set your location</div>
+        <div id="map-modal-actions">
+            <button id="map-modal-confirm" disabled>Confirm Location</button>
+            <button id="map-modal-cancel">Cancel</button>
+        </div>
+    </div>
+</div>
 </body>
 </html>
