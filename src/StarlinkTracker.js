@@ -190,7 +190,7 @@ export class StarlinkTracker {
         this.selected = null;
 
         // === Visibility Highlighting ===
-        this.highlightVisible = true;
+        this.highlightVisible = false;
 
         // === Event Handler References ===
         this._boundHandlers = {};
@@ -967,6 +967,22 @@ export class StarlinkTracker {
         const labelsBtn = document.getElementById('btn-labels');
         if (labelsBtn) labelsBtn.classList.toggle('active', this.labelsEnabled);
 
+        // Collapsible section headings
+        const setupCollapsible = (headingId, contentId) => {
+            const heading = document.getElementById(headingId);
+            const content = document.getElementById(contentId);
+            if (heading && content) {
+                const handler = () => {
+                    heading.classList.toggle('collapsed');
+                    content.classList.toggle('collapsed');
+                };
+                heading.addEventListener('click', handler);
+                this._actionButtons.push({ el: heading, handler });
+            }
+        };
+        setupCollapsible('heading-simulation', 'content-simulation');
+        setupCollapsible('heading-layers', 'content-layers');
+
         bindBtn('keyboard-overlay-close', () => {
             this.ui.keyboardOverlay.classList.remove('visible');
         });
@@ -1290,8 +1306,8 @@ export class StarlinkTracker {
         }
 
         const camDist = this.camera.position.length();
-        // Only show labels when zoomed in reasonably
-        if (camDist > 30) {
+        // Only show labels when zoomed in reasonably (default camera ~37 units)
+        if (camDist > 50) {
             this.removeSatelliteLabel();
             return;
         }

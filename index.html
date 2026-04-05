@@ -376,16 +376,27 @@
         }
 
         /* === Action Buttons === */
-        .action-buttons {
-            display: flex;
+        .btn-group {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
             gap: 8px;
-            margin-top: 12px;
-            flex-wrap: wrap;
+            margin-top: 8px;
+        }
+
+        .btn-group-label {
+            font-size: 10px;
+            color: var(--ui-subtext);
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+            margin-top: 10px;
+            margin-bottom: 0;
+        }
+
+        .btn-group-label:first-child {
+            margin-top: 4px;
         }
 
         .action-btn {
-            flex: 1;
-            min-width: 60px;
             padding: 8px 6px;
             border-radius: 10px;
             border: 1px solid var(--ui-border);
@@ -412,6 +423,38 @@
             display: block;
             font-size: 16px;
             margin-bottom: 2px;
+        }
+
+        /* === Collapsible Sections === */
+        .section-heading {
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            user-select: none;
+        }
+
+        .section-heading::after {
+            content: '\25B4';
+            font-size: 10px;
+            color: var(--ui-subtext);
+            transition: transform 0.2s ease;
+        }
+
+        .section-heading.collapsed::after {
+            transform: rotate(180deg);
+        }
+
+        .collapsible-content {
+            overflow: hidden;
+            transition: max-height 0.3s ease, opacity 0.2s ease;
+            max-height: 1000px;
+            opacity: 1;
+        }
+
+        .collapsible-content.collapsed {
+            max-height: 0;
+            opacity: 0;
         }
 
         /* === Pass Prediction (kept for backward compat, hidden) === */
@@ -666,30 +709,32 @@
         </div>
     </div>
 
-    <h2>Simulation</h2>
-    <div class="control-group">
-        <label for="growthSlider">Constellation Density</label>
-        <input type="range" id="growthSlider" min="1" max="100" value="100">
-        <div class="range-info"><span>Low</span><span>Full</span></div>
-    </div>
+    <h2 class="section-heading" id="heading-simulation">Simulation</h2>
+    <div class="collapsible-content" id="content-simulation">
+        <div class="control-group">
+            <label for="growthSlider">Constellation Density</label>
+            <input type="range" id="growthSlider" min="1" max="100" value="100">
+            <div class="range-info"><span>Low</span><span>Full</span></div>
+        </div>
 
-    <div class="control-group">
-        <label for="timeSpeed">Time Speed (x<span id="speedDisplay">1</span>)</label>
-        <input type="range" id="timeSpeed" min="1" max="200" value="1">
-        <div class="range-info"><span>Real</span><span>Fast</span></div>
-    </div>
+        <div class="control-group">
+            <label for="timeSpeed">Time Speed (x<span id="speedDisplay">1</span>)</label>
+            <input type="range" id="timeSpeed" min="1" max="200" value="1">
+            <div class="range-info"><span>Real</span><span>Fast</span></div>
+        </div>
 
-    <div class="control-group" style="display:flex; gap:8px; margin-top:2px;">
-        <button class="action-btn" id="btn-reset-time" aria-label="Reset simulation to current real time" style="flex:1; font-size:11px;">
-            <span class="action-btn-icon" aria-hidden="true">&#8635;</span>
-            Reset to Now
-        </button>
-    </div>
+        <div class="control-group" style="display:flex; gap:8px; margin-top:2px;">
+            <button class="action-btn" id="btn-reset-time" aria-label="Reset simulation to current real time" style="flex:1; font-size:11px;">
+                <span class="action-btn-icon" aria-hidden="true">&#8635;</span>
+                Reset to Now
+            </button>
+        </div>
 
-    <div class="control-group">
-        <label for="pixelSizeSlider">Satellite Size (<span id="pixelSizeDisplay">2</span> px)</label>
-        <input type="range" id="pixelSizeSlider" min="1" max="8" step="0.5" value="2">
-        <div class="range-info"><span>Small</span><span>Large</span></div>
+        <div class="control-group">
+            <label for="pixelSizeSlider">Satellite Size (<span id="pixelSizeDisplay">2</span> px)</label>
+            <input type="range" id="pixelSizeSlider" min="1" max="8" step="0.5" value="2">
+            <div class="range-info"><span>Small</span><span>Large</span></div>
+        </div>
     </div>
 
     <h2>Search</h2>
@@ -723,7 +768,7 @@
 
         <div class="toggle-row" style="margin-top:8px;">
             <label for="toggle-vis-highlight">Highlight visible sats</label>
-            <input type="checkbox" id="toggle-vis-highlight" checked>
+            <input type="checkbox" id="toggle-vis-highlight">
         </div>
 
         <div id="selected-pass-panel" style="display:none;">
@@ -735,102 +780,85 @@
         </div>
     </div>
 
-    <h2>Layers</h2>
-    <div class="toggle-row">
-        <span>
-            <span class="legend-dot" style="background:#ffffff"></span>
-            Starlink
-            <span class="source-badge sim" id="badge-starlink">--</span>
-        </span>
-        <input type="checkbox" id="layer-starlink" checked>
-    </div>
-    <div class="toggle-row">
-        <span>
-            <span class="legend-dot" style="background:#ffd166"></span>
-            ISS
-            <span class="source-badge sim" id="badge-iss">--</span>
-        </span>
-        <input type="checkbox" id="layer-iss" checked>
-    </div>
-    <div class="toggle-row">
-        <span>
-            <span class="legend-dot" style="background:#06d6a0"></span>
-            GPS
-            <span class="source-badge sim" id="badge-gps">--</span>
-        </span>
-        <input type="checkbox" id="layer-gps" checked>
-    </div>
-    <div class="toggle-row">
-        <span>
-            <span class="legend-dot" style="background:#8d99ae"></span>
-            Galileo
-            <span class="source-badge sim" id="badge-galileo">--</span>
-        </span>
-        <input type="checkbox" id="layer-galileo" checked>
-    </div>
-    <div class="toggle-row">
-        <span>
-            <span class="legend-dot" style="background:#ef476f"></span>
-            OneWeb
-            <span class="source-badge sim" id="badge-oneweb">--</span>
-        </span>
-        <input type="checkbox" id="layer-oneweb" checked>
-    </div>
-    <div class="toggle-row">
-        <span>
-            <span class="legend-dot" style="background:#9966ff"></span>
-            Iridium
-            <span class="source-badge sim" id="badge-iridium">--</span>
-        </span>
-        <input type="checkbox" id="layer-iridium" checked>
-    </div>
-    <div class="toggle-row">
-        <span>
-            <span class="legend-dot" style="background:#ff8033"></span>
-            GLONASS
-            <span class="source-badge sim" id="badge-glonass">--</span>
-        </span>
-        <input type="checkbox" id="layer-glonass" checked>
-    </div>
-    <div class="toggle-row">
-        <span>
-            <span class="legend-dot" style="background:#e6d933"></span>
-            BeiDou
-            <span class="source-badge sim" id="badge-beidou">--</span>
-        </span>
-        <input type="checkbox" id="layer-beidou" checked>
-    </div>
+    <h2 class="section-heading" id="heading-layers">Layers</h2>
+    <div class="collapsible-content" id="content-layers">
+        <div class="toggle-row">
+            <span>
+                <span class="legend-dot" style="background:#ffffff"></span>
+                Starlink
+                <span class="source-badge sim" id="badge-starlink">--</span>
+            </span>
+            <input type="checkbox" id="layer-starlink" checked>
+        </div>
+        <div class="toggle-row">
+            <span>
+                <span class="legend-dot" style="background:#ffd166"></span>
+                ISS
+                <span class="source-badge sim" id="badge-iss">--</span>
+            </span>
+            <input type="checkbox" id="layer-iss" checked>
+        </div>
+        <div class="toggle-row">
+            <span>
+                <span class="legend-dot" style="background:#06d6a0"></span>
+                GPS
+                <span class="source-badge sim" id="badge-gps">--</span>
+            </span>
+            <input type="checkbox" id="layer-gps" checked>
+        </div>
+        <div class="toggle-row">
+            <span>
+                <span class="legend-dot" style="background:#8d99ae"></span>
+                Galileo
+                <span class="source-badge sim" id="badge-galileo">--</span>
+            </span>
+            <input type="checkbox" id="layer-galileo" checked>
+        </div>
+        <div class="toggle-row">
+            <span>
+                <span class="legend-dot" style="background:#ef476f"></span>
+                OneWeb
+                <span class="source-badge sim" id="badge-oneweb">--</span>
+            </span>
+            <input type="checkbox" id="layer-oneweb" checked>
+        </div>
+        <div class="toggle-row">
+            <span>
+                <span class="legend-dot" style="background:#9966ff"></span>
+                Iridium
+                <span class="source-badge sim" id="badge-iridium">--</span>
+            </span>
+            <input type="checkbox" id="layer-iridium" checked>
+        </div>
+        <div class="toggle-row">
+            <span>
+                <span class="legend-dot" style="background:#ff8033"></span>
+                GLONASS
+                <span class="source-badge sim" id="badge-glonass">--</span>
+            </span>
+            <input type="checkbox" id="layer-glonass" checked>
+        </div>
+        <div class="toggle-row">
+            <span>
+                <span class="legend-dot" style="background:#e6d933"></span>
+                BeiDou
+                <span class="source-badge sim" id="badge-beidou">--</span>
+            </span>
+            <input type="checkbox" id="layer-beidou" checked>
+        </div>
 
-    <div class="toggle-row">
-        <span>Show Orbit Trajectory</span>
-        <input type="checkbox" id="toggle-orbit">
+        <div class="toggle-row">
+            <span>Show Orbit Trajectory</span>
+            <input type="checkbox" id="toggle-orbit">
+        </div>
     </div>
 
     <h2>Tools</h2>
-    <div class="action-buttons">
-        <button class="action-btn" id="btn-location" aria-label="Set observer location">
-            <span class="action-btn-icon" aria-hidden="true">&#128205;</span>
-            Location
-        </button>
+    <div class="btn-group-label">Camera</div>
+    <div class="btn-group">
         <button class="action-btn active" id="btn-auto-rotate" aria-label="Toggle auto-rotation">
             <span class="action-btn-icon" aria-hidden="true">&#8635;</span>
             Rotate
-        </button>
-        <button class="action-btn" id="btn-export" aria-label="Export screenshot">
-            <span class="action-btn-icon" aria-hidden="true">&#128247;</span>
-            Export
-        </button>
-        <button class="action-btn" id="btn-theme" aria-label="Toggle light/dark theme">
-            <span class="action-btn-icon" aria-hidden="true">&#9681;</span>
-            Theme
-        </button>
-        <button class="action-btn" id="btn-keyboard" aria-label="Show keyboard shortcuts">
-            <span class="action-btn-icon" aria-hidden="true">&#9000;</span>
-            Keys
-        </button>
-        <button class="action-btn" id="btn-share" aria-label="Copy shareable link to clipboard">
-            <span class="action-btn-icon" aria-hidden="true">&#128279;</span>
-            Share
         </button>
         <button class="action-btn" id="btn-focus" aria-label="Focus camera on selected satellite">
             <span class="action-btn-icon" aria-hidden="true">&#9678;</span>
@@ -840,19 +868,46 @@
             <span class="action-btn-icon" aria-hidden="true">&#10148;</span>
             Follow
         </button>
+        <button class="action-btn" id="btn-reset-camera" aria-label="Reset camera to default view">
+            <span class="action-btn-icon" aria-hidden="true">&#8634;</span>
+            Reset
+        </button>
+    </div>
+    <div class="btn-group-label">View</div>
+    <div class="btn-group">
+        <button class="action-btn" id="btn-theme" aria-label="Toggle light/dark theme">
+            <span class="action-btn-icon" aria-hidden="true">&#9681;</span>
+            Theme
+        </button>
         <button class="action-btn active" id="btn-labels" aria-label="Toggle satellite labels">
             <span class="action-btn-icon" aria-hidden="true">&#9649;</span>
             Labels
         </button>
-        <button class="action-btn" id="btn-reset-camera" aria-label="Reset camera to default view">
-            <span class="action-btn-icon" aria-hidden="true">&#8634;</span>
-            Reset
+        <button class="action-btn" id="btn-location" aria-label="Set observer location">
+            <span class="action-btn-icon" aria-hidden="true">&#128205;</span>
+            Location
+        </button>
+        <button class="action-btn" id="btn-keyboard" aria-label="Show keyboard shortcuts">
+            <span class="action-btn-icon" aria-hidden="true">&#9000;</span>
+            Keys
+        </button>
+    </div>
+    <div class="btn-group-label">Actions</div>
+    <div class="btn-group">
+        <button class="action-btn" id="btn-export" aria-label="Export screenshot">
+            <span class="action-btn-icon" aria-hidden="true">&#128247;</span>
+            Export
+        </button>
+        <button class="action-btn" id="btn-share" aria-label="Copy shareable link to clipboard">
+            <span class="action-btn-icon" aria-hidden="true">&#128279;</span>
+            Share
         </button>
         <button class="action-btn" id="btn-refresh" aria-label="Refresh satellite data">
             <span class="action-btn-icon" aria-hidden="true">&#128260;</span>
             Refresh
         </button>
     </div>
+    <div style="margin-top:10px; padding-top:10px; border-top:1px solid var(--ui-item-border);">
     <button id="btn-manual-toggle" aria-label="Enter location manually">Enter coordinates manually</button>
     <div id="manual-location-form" style="display:none; margin-top:8px;">
         <input type="text" id="input-dms"
@@ -866,6 +921,7 @@
             <span class="action-btn-icon" aria-hidden="true">&#10003;</span>
             Set Location
         </button>
+    </div>
     </div>
 </div>
 
@@ -882,7 +938,7 @@
 <div id="pause-indicator" style="display:none; position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); background:rgba(0,0,0,0.7); color:#fff; padding:12px 24px; border-radius:12px; font-size:18px; font-weight:600; pointer-events:none; z-index:200; letter-spacing:0.05em;">⏸ PAUSED</div>
 
 <div id="controls">
-    Drag: Rotate | Scroll: Zoom | Click: Select | H: UI | A: Rotation | P: Pause | G: Location | N: Now | R: Reset | C: Cycle | F: Focus | L: Labels | ?: Shortcuts
+    Drag: Rotate | Scroll: Zoom | Click: Select | <strong>?</strong>: All shortcuts
 </div>
 
 <div id="error-toast" role="alert" aria-live="assertive"></div>
