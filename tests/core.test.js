@@ -5,6 +5,8 @@ import {
     computeShadowFactorKm,
     SimulatedOrbit,
     calculateElevation,
+    calculateAzimuth,
+    azimuthToCardinal,
     calculateSunDirection,
     isMobileDevice,
     clampPointSize
@@ -306,6 +308,60 @@ describe('calculateElevation', () => {
         };
         const el = calculateElevation(observer, satECI, gmst);
         expect(el).toBeLessThan(0);
+    });
+});
+
+// ============================================================================
+// calculateAzimuth
+// ============================================================================
+describe('calculateAzimuth', () => {
+    // Observer at equator / prime meridian, gmst = 0 (so ECI == ECEF).
+    // Observer's "up" is +x; local East is +y, local North is +z.
+    // Each satellite sits above the observer (+x) with a tangential offset.
+    const observer = { lat: 0, lon: 0, alt: 0 };
+    const gmst = 0;
+    const Re = 6371;
+
+    test('satellite due East returns ~90 degrees', () => {
+        const satECI = { x: Re + 500, y: 1500, z: 0 };
+        expect(calculateAzimuth(observer, satECI, gmst)).toBeCloseTo(90, 0);
+    });
+
+    test('satellite due North returns ~0 degrees', () => {
+        const satECI = { x: Re + 500, y: 0, z: 1500 };
+        expect(calculateAzimuth(observer, satECI, gmst)).toBeCloseTo(0, 0);
+    });
+
+    test('satellite due West returns ~270 degrees', () => {
+        const satECI = { x: Re + 500, y: -1500, z: 0 };
+        expect(calculateAzimuth(observer, satECI, gmst)).toBeCloseTo(270, 0);
+    });
+
+    test('satellite due South returns ~180 degrees', () => {
+        const satECI = { x: Re + 500, y: 0, z: -1500 };
+        expect(calculateAzimuth(observer, satECI, gmst)).toBeCloseTo(180, 0);
+    });
+
+    test('satellite to the North-East returns ~45 degrees (locks N/E axes)', () => {
+        const satECI = { x: Re + 500, y: 1500, z: 1500 };
+        expect(calculateAzimuth(observer, satECI, gmst)).toBeCloseTo(45, 0);
+    });
+});
+
+// ============================================================================
+// azimuthToCardinal
+// ============================================================================
+describe('azimuthToCardinal', () => {
+    test('maps the four cardinal directions', () => {
+        expect(azimuthToCardinal(0)).toBe('N');
+        expect(azimuthToCardinal(90)).toBe('E');
+        expect(azimuthToCardinal(180)).toBe('S');
+        expect(azimuthToCardinal(270)).toBe('W');
+    });
+
+    test('maps the intercardinal directions', () => {
+        expect(azimuthToCardinal(45)).toBe('NE');
+        expect(azimuthToCardinal(315)).toBe('NW');
     });
 });
 

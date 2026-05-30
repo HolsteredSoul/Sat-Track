@@ -312,18 +312,19 @@ export function calculateAzimuth(observer, satECI, gmst) {
     const uy = obsY / upLen;
     const uz = obsZ / upLen;
 
-    // East unit vector: Up cross Z-pole (0,0,1) → simplifies to (uy, -ux, 0)
-    let ex = uy;
-    let ey = -ux;
+    // East unit vector: Z-pole (0,0,1) cross Up → simplifies to (-uy, ux, 0)
+    let ex = -uy;
+    let ey = ux;
     const eLen = Math.sqrt(ex * ex + ey * ey);
     if (eLen < 1e-10) return 0; // azimuth undefined at poles
     ex /= eLen;
     ey /= eLen;
 
-    // North unit vector: East cross Up
-    const nx = ey * uz - 0 * uy; // ez = 0
-    const ny = 0 * ux - ex * uz;
-    const nz = ex * uy - ey * ux;
+    // North unit vector: Up cross East (ez = 0). ENU is right-handed here
+    // (East × North = Up), so atan2(rEast, rNorth) is azimuth clockwise from North.
+    const nx = -uz * ey;
+    const ny = uz * ex;
+    const nz = ux * ey - uy * ex;
 
     // Project range onto North and East
     const rNorth = rx * nx + ry * ny + rz * nz;
