@@ -175,6 +175,7 @@ export class StarlinkTracker {
         this.observerLocation = null; // { lat, lon } in degrees
         this.groundStationMarker = null;
         this._leafletMap = null;
+        this._locationPickerOpen = false;
 
         // === Theme ===
         this.currentTheme = loadThemePreference();
@@ -2466,6 +2467,10 @@ export class StarlinkTracker {
      * Opens the Leaflet map modal for picking a location.
      */
     _openLocationPicker() {
+        // Re-entry guard: ignore repeat opens (e.g. pressing 'G' while open)
+        // so we don't stack duplicate listeners or maps.
+        if (this._locationPickerOpen) return;
+
         const modal = document.getElementById('map-modal');
         const mapDiv = document.getElementById('leaflet-map');
         const coordsDiv = document.getElementById('map-modal-coords');
@@ -2474,9 +2479,45 @@ export class StarlinkTracker {
         const closeBtn = document.getElementById('map-modal-close');
         if (!modal || !mapDiv) return;
 
-        modal.style.display = '';
+        // Leaflet is loaded from a CDN; if it failed to load, fall back to the
+        // manual coordinate form instead of opening an empty, dead modal.
+        if (typeof L === 'undefined') {
+            handleError('Map picker', new Error('Leaflet failed to load'), true);
+            this.updateStatus('Map unavailable \u2014 enter coordinates manually', 'status-err');
+            this._showManualLocationForm();
+            return;
+        }
+
         let pendingLat = null;
         let pendingLon = null;
+        let marker = null;
+
+        // Normalize longitude into [-180, 180]; Leaflet can return values
+        // outside this range when the world is panned across copies.
+        const normLon = (lon) => ((((lon + 180) % 360) + 360) % 360) - 180;
+        const fmtCoords = (lat, lon) =>
+            `${Math.abs(lat).toFixed(4)}\u00b0${lat >= 0 ? 'N' : 'S'}, ${Math.abs(lon).toFixed(4)}\u00b0${lon >= 0 ? 'E' : 'W'}`;
+
+        // Record a pending selection and reflect it in the UI.
+        const setPending = (lat, lon) => {
+            pendingLat = lat;
+            pendingLon = normLon(lon);
+            coordsDiv.textContent = fmtCoords(pendingLat, pendingLon);
+            confirmBtn.disabled = false;
+        };
+
+        // Create (or reuse) the draggable marker and keep `pending*` in sync.
+        const placeMarker = (latlng) => {
+            if (marker) {
+                marker.setLatLng(latlng);
+            } else {
+                marker = L.marker(latlng, { draggable: true }).addTo(map);
+                marker.on('dragend', () => {
+                    const pos = marker.getLatLng();
+                    setPending(pos.lat, pos.lng);
+                });
+            }
+        };
 
         // Determine initial center
         const startLat = this.observerLocation ? this.observerLocation.lat : 20;
@@ -2489,29 +2530,35 @@ export class StarlinkTracker {
             this._leafletMap = null;
         }
 
-        const map = L.map(mapDiv).setView([startLat, startLon], startZoom);
+        let map;
+        try {
+            map = L.map(mapDiv).setView([startLat, startLon], startZoom);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 18,
+                attribution: '&copy; OpenStreetMap'
+            }).addTo(map);
+        } catch (error) {
+            // Map init failed after showing nothing yet: clean up and fall back.
+            if (map) map.remove();
+            this._leafletMap = null;
+            handleError('Map picker', error, true);
+            this.updateStatus('Map unavailable \u2014 enter coordinates manually', 'status-err');
+            this._showManualLocationForm();
+            return;
+        }
+
+        // Only mark the picker open once the map is live and about to be shown.
+        this._locationPickerOpen = true;
         this._leafletMap = map;
-
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            maxZoom: 18,
-            attribution: '&copy; OpenStreetMap'
-        }).addTo(map);
-
-        let marker = null;
+        modal.style.display = '';
 
         // Place initial marker if location exists
         if (this.observerLocation) {
             marker = L.marker([startLat, startLon], { draggable: true }).addTo(map);
-            pendingLat = startLat;
-            pendingLon = startLon;
-            coordsDiv.textContent = `${Math.abs(startLat).toFixed(4)}\u00b0${startLat >= 0 ? 'N' : 'S'}, ${Math.abs(startLon).toFixed(4)}\u00b0${startLon >= 0 ? 'E' : 'W'}`;
-            confirmBtn.disabled = false;
-
+            setPending(startLat, startLon);
             marker.on('dragend', () => {
                 const pos = marker.getLatLng();
-                pendingLat = pos.lat;
-                pendingLon = pos.lng;
-                coordsDiv.textContent = `${Math.abs(pos.lat).toFixed(4)}\u00b0${pos.lat >= 0 ? 'N' : 'S'}, ${Math.abs(pos.lng).toFixed(4)}\u00b0${pos.lng >= 0 ? 'E' : 'W'}`;
+                setPending(pos.lat, pos.lng);
             });
         }
 
@@ -2530,26 +2577,13 @@ export class StarlinkTracker {
 
         // Click map to place/move marker
         map.on('click', (e) => {
-            pendingLat = e.latlng.lat;
-            pendingLon = e.latlng.lng;
-            coordsDiv.textContent = `${Math.abs(pendingLat).toFixed(4)}\u00b0${pendingLat >= 0 ? 'N' : 'S'}, ${Math.abs(pendingLon).toFixed(4)}\u00b0${pendingLon >= 0 ? 'E' : 'W'}`;
-            confirmBtn.disabled = false;
-
-            if (marker) {
-                marker.setLatLng(e.latlng);
-            } else {
-                marker = L.marker(e.latlng, { draggable: true }).addTo(map);
-                marker.on('dragend', () => {
-                    const pos = marker.getLatLng();
-                    pendingLat = pos.lat;
-                    pendingLon = pos.lng;
-                    coordsDiv.textContent = `${Math.abs(pos.lat).toFixed(4)}\u00b0${pos.lat >= 0 ? 'N' : 'S'}, ${Math.abs(pos.lng).toFixed(4)}\u00b0${pos.lng >= 0 ? 'E' : 'W'}`;
-                });
-            }
+            setPending(e.latlng.lat, e.latlng.lng);
+            placeMarker(e.latlng);
         });
 
         const closeModal = () => {
             modal.style.display = 'none';
+            this._locationPickerOpen = false;
             if (this._leafletMap) {
                 this._leafletMap.remove();
                 this._leafletMap = null;
@@ -2565,25 +2599,37 @@ export class StarlinkTracker {
             cleanup();
         };
         const onCancel = () => { closeModal(); cleanup(); };
-        const onKeyDown = (e) => { if (e.key === 'Escape') { closeModal(); cleanup(); } };
+        const onKeyDown = (e) => {
+            if (e.key === 'Escape') {
+                // Stop the global keydown handler from also clearing the
+                // current satellite selection on the same press.
+                e.stopPropagation();
+                closeModal();
+                cleanup();
+            }
+        };
         const onBackdrop = (e) => { if (e.target === modal) { closeModal(); cleanup(); } };
 
         const cleanup = () => {
             confirmBtn.removeEventListener('click', onConfirm);
             cancelBtn.removeEventListener('click', onCancel);
             closeBtn.removeEventListener('click', onCancel);
-            window.removeEventListener('keydown', onKeyDown);
+            window.removeEventListener('keydown', onKeyDown, true);
             modal.removeEventListener('click', onBackdrop);
         };
 
         confirmBtn.addEventListener('click', onConfirm);
         cancelBtn.addEventListener('click', onCancel);
         closeBtn.addEventListener('click', onCancel);
-        window.addEventListener('keydown', onKeyDown);
+        // Capture phase so we see Escape before the window-level app handler.
+        window.addEventListener('keydown', onKeyDown, true);
         modal.addEventListener('click', onBackdrop);
 
-        // Force Leaflet to recalculate size after modal is visible
-        setTimeout(() => map.invalidateSize(), 100);
+        // Force Leaflet to recalculate size after modal is visible.
+        // Guard against the modal being closed (map removed) within the delay.
+        setTimeout(() => {
+            if (this._leafletMap === map) map.invalidateSize();
+        }, 100);
     }
 
     /**
