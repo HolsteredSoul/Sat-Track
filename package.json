@@ -7,7 +7,7 @@
         "dev": "vite",
         "build": "vite build",
         "preview": "vite preview",
-        "test": "node --experimental-vm-modules node_modules/.bin/jest --forceExit",
+        "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js --forceExit",
         "lint": "eslint src/ tests/",
         "lint:fix": "eslint src/ tests/ --fix",
         "format": "prettier --write 'src/**/*.js' 'tests/**/*.js' '*.json' '*.md'",

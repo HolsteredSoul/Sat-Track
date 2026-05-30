@@ -19,6 +19,7 @@ export const CONSTANTS = {
     POINT_SIZE_DEFAULT: 2.0,
     POINT_SIZE_MIN: 1.0,
     POINT_SIZE_MAX: 8.0,
+    PICK_THRESHOLD_PX_BUFFER: 2.0, // extra px added to a dot's rendered size for a forgiving pick radius
     ISS_POINT_SIZE: 8.0,
     ISS_ICON_RESOLUTION: 64,
     STAR_COUNT: 2000,
@@ -37,6 +38,9 @@ export const CONSTANTS = {
     TERMINATOR_BLEND_START: -0.1,
     TERMINATOR_BLEND_END: 0.1,
     ATMOSPHERE_SCATTER_START: 0.2,
+    // The atmosphere shell uses an intentionally wider terminator than the
+    // Earth surface so its blue rim fades softly across the day/night boundary.
+    ATMOSPHERE_DAYSIDE_BLEND: 0.3,
 
     // === Network & Caching ===
     CACHE_TTL_MS: 3600000,
@@ -73,8 +77,8 @@ export const CONSTANTS = {
     ECLIPSE_DIM_FACTOR: 0.5,
 
     // === Visibility Highlight ===
-    VIS_HIGHLIGHT_COLOR: { r: 0.2, g: 1.0, b: 0.2 },  // vivid green for visible sats
-    VIS_DIM_FACTOR: 0.5,                                // dim non-visible sats to 50% brightness
+    VIS_HIGHLIGHT_COLOR: { r: 0.2, g: 1.0, b: 0.2 }, // vivid green for visible sats
+    VIS_DIM_FACTOR: 0.5, // dim non-visible sats to 50% brightness
 
     // === Mobile Performance ===
     MOBILE_STAR_COUNT: 800,

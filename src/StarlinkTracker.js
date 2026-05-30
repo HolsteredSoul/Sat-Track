@@ -507,9 +507,18 @@ export class StarlinkTracker {
         this._maxAniso = this.renderer.capabilities.getMaxAnisotropy();
 
         const initialUniforms = {
-            dayTexture: { value: loader.load(this.config.urls.earthDay, (tex) => this._configureTexture(tex)) },
-            nightTexture: { value: loader.load(this.config.urls.earthNight, (tex) => this._configureTexture(tex)) },
-            sunDirection: { value: new THREE.Vector3(1, 0, 0) }
+            dayTexture: {
+                value: loader.load(this.config.urls.earthDay, (tex) => this._configureTexture(tex))
+            },
+            nightTexture: {
+                value: loader.load(this.config.urls.earthNight, (tex) =>
+                    this._configureTexture(tex)
+                )
+            },
+            sunDirection: { value: new THREE.Vector3(1, 0, 0) },
+            uTerminatorStart: { value: CONSTANTS.TERMINATOR_BLEND_START },
+            uTerminatorEnd: { value: CONSTANTS.TERMINATOR_BLEND_END },
+            uScatterStart: { value: CONSTANTS.ATMOSPHERE_SCATTER_START }
         };
 
         this._earthLodDefaultDay = initialUniforms.dayTexture.value;
@@ -533,15 +542,18 @@ export class StarlinkTracker {
                 uniform sampler2D dayTexture;
                 uniform sampler2D nightTexture;
                 uniform vec3 sunDirection;
+                uniform float uTerminatorStart;
+                uniform float uTerminatorEnd;
+                uniform float uScatterStart;
                 varying vec2 vUv;
                 varying vec3 vWorldNormal;
                 void main() {
                     vec3 day = texture2D(dayTexture, vUv).rgb;
                     vec3 night = texture2D(nightTexture, vUv).rgb;
                     float sunDot = dot(vWorldNormal, sunDirection);
-                    float mixVal = smoothstep(-0.10, 0.10, sunDot);
+                    float mixVal = smoothstep(uTerminatorStart, uTerminatorEnd, sunDot);
                     vec3 atmosphere = vec3(1.0, 0.6, 0.3);
-                    float scatter = smoothstep(0.20, 0.0, abs(sunDot));
+                    float scatter = smoothstep(uScatterStart, 0.0, abs(sunDot));
                     vec3 final = mix(night * 2.5, day, mixVal);
                     final += atmosphere * scatter * 0.5 * (1.0 - mixVal);
                     gl_FragColor = vec4(final, 1.0);
@@ -555,6 +567,16 @@ export class StarlinkTracker {
             64
         );
         this.earthGroup = new THREE.Mesh(geometry, this.earthMat);
+        // This -90° Y rotation is coupled with the coordinate transforms used
+        // elsewhere and must not be changed in isolation:
+        //   - Satellite positions map ECI lon/lat to scene space as
+        //     x = cos(lat)sin(lon), y = sin(lat), z = cos(lat)cos(lon).
+        //   - calculateSunDirection (core.js) emits the sun vector remapped as
+        //     (x, z, -y) into the same scene frame.
+        // Rotating the sphere -90° about Y aligns the blue-marble texture's 0°
+        // longitude seam with that frame so the day/night terminator lands on the
+        // correct meridian. Changing this rotation, the sat mapping, or the sun
+        // remapping requires re-tuning the others together.
         this.earthGroup.rotation.y = -Math.PI / 2;
         this.scene.add(this.earthGroup);
         this._disposables.push(geometry);
@@ -568,7 +590,8 @@ export class StarlinkTracker {
         );
         this.atmoMat = new THREE.ShaderMaterial({
             uniforms: {
-                sunDirection: { value: new THREE.Vector3(1, 0, 0) }
+                sunDirection: { value: new THREE.Vector3(1, 0, 0) },
+                uDaysideBlend: { value: CONSTANTS.ATMOSPHERE_DAYSIDE_BLEND }
             },
             vertexShader: `
                 varying vec3 vWorldNormal;
@@ -583,13 +606,14 @@ export class StarlinkTracker {
             fragmentShader: `
                 precision mediump float;
                 uniform vec3 sunDirection;
+                uniform float uDaysideBlend;
                 varying vec3 vWorldNormal;
                 varying vec3 vViewPosition;
                 void main() {
                     vec3 viewDir = normalize(vViewPosition);
                     float fresnel = pow(0.7 - dot(vWorldNormal, viewDir), 3.0);
                     float sunOrientation = dot(vWorldNormal, sunDirection);
-                    float daySide = smoothstep(-0.30, 0.30, sunOrientation);
+                    float daySide = smoothstep(-uDaysideBlend, uDaysideBlend, sunOrientation);
                     gl_FragColor = vec4(0.3, 0.6, 1.0, 1.0) * fresnel * daySide * 1.5;
                 }
             `,
@@ -624,9 +648,23 @@ export class StarlinkTracker {
         this._earthLodLastCheck = now;
 
         const shouldBeHigh = camDist < CONSTANTS.EARTH_LOD_THRESHOLD;
-        const shouldBeLow = camDist > CONSTANTS.EARTH_LOD_THRESHOLD + CONSTANTS.EARTH_LOD_HYSTERESIS;
+        const shouldBeLow =
+            camDist > CONSTANTS.EARTH_LOD_THRESHOLD + CONSTANTS.EARTH_LOD_HYSTERESIS;
 
-        if (shouldBeHigh && !this._earthLodHigh && !this._earthLodLoading && !this._earthLodFailed) {
+        if (
+            shouldBeHigh &&
+            !this._earthLodHigh &&
+            !this._earthLodLoading &&
+            !this._earthLodFailed
+        ) {
+            // Already fetched the high-res texture on a previous zoom-in — just
+            // reapply the cached one. Re-fetching would allocate a new GPU texture
+            // and overwrite _earthLodCache without disposing the old one (leak).
+            if (this._earthLodCache) {
+                this.earthMat.uniforms.dayTexture.value = this._earthLodCache;
+                this._earthLodHigh = true;
+                return;
+            }
             this._earthLodLoading = true;
             const loader = this._texLoader;
 
@@ -635,7 +673,10 @@ export class StarlinkTracker {
             });
 
             const timeout = new Promise((_, reject) =>
-                setTimeout(() => reject(new Error('LOD texture load timeout')), CONSTANTS.EARTH_LOD_LOAD_TIMEOUT_MS)
+                setTimeout(
+                    () => reject(new Error('LOD texture load timeout')),
+                    CONSTANTS.EARTH_LOD_LOAD_TIMEOUT_MS
+                )
             );
 
             Promise.race([loadPromise, timeout])
@@ -647,13 +688,20 @@ export class StarlinkTracker {
                     this._configureTexture(dayHi);
                     this._earthLodCache = dayHi;
                     const currentDist = this.camera.position.length();
-                    if (currentDist < CONSTANTS.EARTH_LOD_THRESHOLD + CONSTANTS.EARTH_LOD_HYSTERESIS) {
+                    if (
+                        currentDist <
+                        CONSTANTS.EARTH_LOD_THRESHOLD + CONSTANTS.EARTH_LOD_HYSTERESIS
+                    ) {
                         this.earthMat.uniforms.dayTexture.value = dayHi;
                         this._earthLodHigh = true;
                     }
                 })
-                .catch(() => { this._earthLodFailed = true; })
-                .finally(() => { this._earthLodLoading = false; });
+                .catch(() => {
+                    this._earthLodFailed = true;
+                })
+                .finally(() => {
+                    this._earthLodLoading = false;
+                });
         } else if (shouldBeLow && this._earthLodHigh) {
             this.earthMat.uniforms.dayTexture.value = this._earthLodDefaultDay;
             this._earthLodHigh = false;
@@ -2052,7 +2100,6 @@ export class StarlinkTracker {
 
                 const positions = mesh.geometry.attributes.position;
                 const colors = mesh.geometry.attributes.color;
-                const pointSizes = mesh.geometry.attributes.aSize;
 
                 const totalCount = layer.satData.length;
                 let activeCount = totalCount;
@@ -2161,20 +2208,23 @@ export class StarlinkTracker {
                         let g = baseC.g * (1 - t) + darkC.g * t;
                         let b = baseC.b * (1 - t) + darkC.b * t;
 
-                        // Visibility highlight: visible sats keep full color + larger size,
-                        // non-visible sats are dimmed + smaller
+                        // Visibility highlight: force visible sats to a vivid green and dim
+                        // the rest. This mirrors the worker path (propagator.worker.js
+                        // handleUpdate) so the appearance is identical whether propagation
+                        // runs on the worker or here in the sync fallback. Point sizes are
+                        // intentionally left untouched (aSize stays 1.0) to match the worker.
                         if (syncHighlight && syncObserver && eciPos) {
                             const elev = calculateElevation(syncObserver, eciPos, gmst);
                             if (elev >= syncMinEl) {
-                                pointSizes.setX(i, 2.5);
+                                const hc = CONSTANTS.VIS_HIGHLIGHT_COLOR;
+                                r = hc.r;
+                                g = hc.g;
+                                b = hc.b;
                             } else {
                                 r *= CONSTANTS.VIS_DIM_FACTOR;
                                 g *= CONSTANTS.VIS_DIM_FACTOR;
                                 b *= CONSTANTS.VIS_DIM_FACTOR;
-                                pointSizes.setX(i, 0.5);
                             }
-                        } else {
-                            pointSizes.setX(i, 1.0);
                         }
 
                         colors.setXYZ(i, r, g, b);
@@ -2190,7 +2240,6 @@ export class StarlinkTracker {
                 mesh.geometry.setDrawRange(0, activeCount);
                 positions.needsUpdate = true;
                 colors.needsUpdate = true;
-                pointSizes.needsUpdate = true;
             }
 
             // Update ISS sprite
@@ -2407,11 +2456,18 @@ export class StarlinkTracker {
             const fovY = THREE.MathUtils.degToRad(this.camera.fov);
             const vh = this.renderer.domElement.clientHeight || window.innerHeight;
             const worldPerPx = (2 * Math.tan(fovY / 2) * camDist) / vh;
+            // Match the distance-based size scaling applied to uBaseSize in animate()
+            // so the pick threshold tracks the dots' actual on-screen size at every
+            // zoom level. (aSize is always 1.0, so the effective size is just this.)
+            // Because sizeScale grows as the camera approaches, this also covers the
+            // close-range case that previously needed a separate closeBoost hack.
+            const refDist = CONSTANTS.CAMERA_INITIAL_DISTANCE;
+            const sizeScale = Math.max(1, (refDist / camDist) * (refDist / camDist));
+            const effectiveSize = this.pointSize * sizeScale;
             // Allow a small extra-pixel buffer so the cursor doesn't have to be
             // perfectly centred on the dot.
-            // Bump the multiplier when very close to make picking more forgiving
-            const closeBoost = camDist < 2 ? 2 : 1;
-            this.raycaster.params.Points.threshold = (this.pointSize + 2) * worldPerPx * closeBoost;
+            this.raycaster.params.Points.threshold =
+                (effectiveSize + CONSTANTS.PICK_THRESHOLD_PX_BUFFER) * worldPerPx;
 
             const hits = this.raycaster.intersectObjects(objs);
 
@@ -2570,7 +2626,9 @@ export class StarlinkTracker {
                         map.setView([position.coords.latitude, position.coords.longitude], 6);
                     }
                 },
-                () => { /* ignore errors */ },
+                () => {
+                    /* ignore errors */
+                },
                 { enableHighAccuracy: false, timeout: 5000 }
             );
         }
@@ -2598,7 +2656,10 @@ export class StarlinkTracker {
             closeModal();
             cleanup();
         };
-        const onCancel = () => { closeModal(); cleanup(); };
+        const onCancel = () => {
+            closeModal();
+            cleanup();
+        };
         const onKeyDown = (e) => {
             if (e.key === 'Escape') {
                 // Stop the global keydown handler from also clearing the
@@ -2608,7 +2669,12 @@ export class StarlinkTracker {
                 cleanup();
             }
         };
-        const onBackdrop = (e) => { if (e.target === modal) { closeModal(); cleanup(); } };
+        const onBackdrop = (e) => {
+            if (e.target === modal) {
+                closeModal();
+                cleanup();
+            }
+        };
 
         const cleanup = () => {
             confirmBtn.removeEventListener('click', onConfirm);
@@ -2721,7 +2787,6 @@ export class StarlinkTracker {
             this.ui.manualLocationForm.style.display = '';
         }
     }
-
 
     /**
      * Creates a 3D marker for the ground station on Earth's surface.
@@ -3054,11 +3119,10 @@ export class StarlinkTracker {
      */
     setPointSize(size) {
         this.pointSize = clampPointSize(size, CONSTANTS.POINT_SIZE_MIN, CONSTANTS.POINT_SIZE_MAX);
-        Object.values(this.layerMeshes).forEach((mesh) => {
-            if (mesh && mesh.material && mesh.material.uniforms) {
-                mesh.material.uniforms.uBaseSize.value = this.pointSize;
-            }
-        });
+        // No need to write uBaseSize here: animate() rewrites it every frame as
+        // this.pointSize * sizeScale. Writing the raw size now would be overwritten
+        // next frame and could cause a one-frame pop when the camera isn't at the
+        // reference distance.
         if (this.ui.pixelSizeDisplay) this.ui.pixelSizeDisplay.textContent = this.pointSize;
         savePointSizePreference(this.pointSize);
     }
