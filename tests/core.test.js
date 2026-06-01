@@ -284,6 +284,16 @@ describe('calculateElevation', () => {
         expect(el).toBeCloseTo(90, 0);
     });
 
+    test('observer altitude affects elevation result', () => {
+        const gmst = 0;
+        const observerSeaLevel = { lat: 0, lon: 0, alt: 0 };
+        const observerHigh = { lat: 0, lon: 0, alt: 10 }; // 10 km
+        const satECI = { x: 0, y: 6371 + 400, z: 0 };
+        const el0 = calculateElevation(observerSeaLevel, satECI, gmst);
+        const el10 = calculateElevation(observerHigh, satECI, gmst);
+        expect(Math.abs(el10 - el0)).toBeGreaterThan(1e-6);
+    });
+
     test('satellite on horizon returns ~0 degrees', () => {
         const observer = { lat: 0, lon: 0, alt: 0 };
         const gmst = 0;
@@ -321,6 +331,14 @@ describe('calculateAzimuth', () => {
     const observer = { lat: 0, lon: 0, alt: 0 };
     const gmst = 0;
     const Re = 6371;
+
+    test('observer altitude does not affect azimuth for a fixed line-of-sight', () => {
+        const observerHigh = { lat: 0, lon: 0, alt: 10 };
+        const satECI = { x: Re + 500, y: 1500, z: 1500 };
+        const az0 = calculateAzimuth(observer, satECI, gmst);
+        const az10 = calculateAzimuth(observerHigh, satECI, gmst);
+        expect(az10).toBeCloseTo(az0, 10);
+    });
 
     test('satellite due East returns ~90 degrees', () => {
         const satECI = { x: Re + 500, y: 1500, z: 0 };

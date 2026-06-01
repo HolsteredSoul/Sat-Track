@@ -260,11 +260,13 @@ export function calculateElevation(observer, satECI, gmst) {
     const Re = CONSTANTS.EARTH_RADIUS_KM;
     const lat = observer.lat;
     const lon = observer.lon + gmst;
+    const altKm = typeof observer.alt === 'number' && !isNaN(observer.alt) ? observer.alt : 0;
+    const rObs = Re + altKm;
 
     // Observer position in ECI
-    const obsX = Re * Math.cos(lat) * Math.cos(lon);
-    const obsY = Re * Math.cos(lat) * Math.sin(lon);
-    const obsZ = Re * Math.sin(lat);
+    const obsX = rObs * Math.cos(lat) * Math.cos(lon);
+    const obsY = rObs * Math.cos(lat) * Math.sin(lon);
+    const obsZ = rObs * Math.sin(lat);
 
     // Range vector
     const rx = satECI.x - obsX;
@@ -295,11 +297,13 @@ export function calculateAzimuth(observer, satECI, gmst) {
     const Re = CONSTANTS.EARTH_RADIUS_KM;
     const lat = observer.lat;
     const lon = observer.lon + gmst; // geographic → ECI
+    const altKm = typeof observer.alt === 'number' && !isNaN(observer.alt) ? observer.alt : 0;
+    const rObs = Re + altKm;
 
     // Observer ECI position
-    const obsX = Re * Math.cos(lat) * Math.cos(lon);
-    const obsY = Re * Math.cos(lat) * Math.sin(lon);
-    const obsZ = Re * Math.sin(lat);
+    const obsX = rObs * Math.cos(lat) * Math.cos(lon);
+    const obsY = rObs * Math.cos(lat) * Math.sin(lon);
+    const obsZ = rObs * Math.sin(lat);
 
     // Range vector (observer → satellite)
     const rx = satECI.x - obsX;
