@@ -97,6 +97,8 @@ export const CONSTANTS = {
     EARTH_DAY_TEXTURE: 'https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg',
     EARTH_NIGHT_TEXTURE: 'https://unpkg.com/three-globe/example/img/earth-night.jpg',
     EARTH_DAY_TEXTURE_HI: '/textures/earth-day-8k.jpg',
+    EARTH_WATER_TEXTURE: 'https://unpkg.com/three-globe/example/img/earth-water.png',
+    EARTH_CLOUDS_TEXTURE: 'https://unpkg.com/three-globe/example/img/earth-clouds.png',
 
     // === Earth Texture LOD ===
     EARTH_LOD_THRESHOLD: 14,

@@ -58,6 +58,8 @@ export class StarlinkTracker {
                 earthDay: CONSTANTS.EARTH_DAY_TEXTURE,
                 earthNight: CONSTANTS.EARTH_NIGHT_TEXTURE,
                 earthDayHi: CONSTANTS.EARTH_DAY_TEXTURE_HI,
+                earthWater: CONSTANTS.EARTH_WATER_TEXTURE,
+                earthClouds: CONSTANTS.EARTH_CLOUDS_TEXTURE,
                 tle: CONSTANTS.TLE_URLS,
                 tleJson: CONSTANTS.TLE_JSON_URLS
             }
@@ -464,6 +466,7 @@ export class StarlinkTracker {
         this.renderer.setSize(window.innerWidth, window.innerHeight);
         this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.isMobile ? 1.5 : 2));
         this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        this.renderer.toneMappingExposure = 1.15;
         document.body.appendChild(this.renderer.domElement);
 
         // CSS2D overlay renderer for satellite labels
@@ -518,22 +521,33 @@ export class StarlinkTracker {
             sunDirection: { value: new THREE.Vector3(1, 0, 0) },
             uTerminatorStart: { value: CONSTANTS.TERMINATOR_BLEND_START },
             uTerminatorEnd: { value: CONSTANTS.TERMINATOR_BLEND_END },
-            uScatterStart: { value: CONSTANTS.ATMOSPHERE_SCATTER_START }
+            uScatterStart: { value: CONSTANTS.ATMOSPHERE_SCATTER_START },
+            uSpecStrength: { value: 0.0 },
+            specularMap: {
+                value: loader.load(this.config.urls.earthWater, (tex) => {
+                    this._configureTexture(tex);
+                    this.earthMat.uniforms.uSpecStrength.value = 0.6;
+                })
+            }
         };
 
         this._earthLodDefaultDay = initialUniforms.dayTexture.value;
 
         this._disposables.push(initialUniforms.dayTexture.value);
         this._disposables.push(initialUniforms.nightTexture.value);
+        this._disposables.push(initialUniforms.specularMap.value);
 
         this.earthMat = new THREE.ShaderMaterial({
             uniforms: initialUniforms,
             vertexShader: `
                 varying vec2 vUv;
                 varying vec3 vWorldNormal;
+                varying vec3 vViewDir;
                 void main() {
                     vUv = uv;
                     vWorldNormal = normalize(mat3(modelMatrix) * normal);
+                    vec4 worldPos = modelMatrix * vec4(position, 1.0);
+                    vViewDir = normalize(cameraPosition - worldPos.xyz);
                     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
                 }
             `,
@@ -545,8 +559,11 @@ export class StarlinkTracker {
                 uniform float uTerminatorStart;
                 uniform float uTerminatorEnd;
                 uniform float uScatterStart;
+                uniform sampler2D specularMap;
+                uniform float uSpecStrength;
                 varying vec2 vUv;
                 varying vec3 vWorldNormal;
+                varying vec3 vViewDir;
                 void main() {
                     vec3 day = texture2D(dayTexture, vUv).rgb;
                     vec3 night = texture2D(nightTexture, vUv).rgb;
@@ -556,6 +573,10 @@ export class StarlinkTracker {
                     float scatter = smoothstep(uScatterStart, 0.0, abs(sunDot));
                     vec3 final = mix(night * 2.5, day, mixVal);
                     final += atmosphere * scatter * 0.5 * (1.0 - mixVal);
+                    float ocean = texture2D(specularMap, vUv).r;
+                    vec3 H = normalize(sunDirection + vViewDir);
+                    float spec = pow(max(dot(vWorldNormal, H), 0.0), 60.0);
+                    final += vec3(1.0, 0.95, 0.85) * spec * ocean * uSpecStrength * mixVal;
                     gl_FragColor = vec4(final, 1.0);
                 }
             `
@@ -611,10 +632,13 @@ export class StarlinkTracker {
                 varying vec3 vViewPosition;
                 void main() {
                     vec3 viewDir = normalize(vViewPosition);
-                    float fresnel = pow(0.7 - dot(vWorldNormal, viewDir), 3.0);
+                    float fres = pow(clamp(0.75 - dot(vWorldNormal, viewDir), 0.0, 1.0), 2.5);
                     float sunOrientation = dot(vWorldNormal, sunDirection);
                     float daySide = smoothstep(-uDaysideBlend, uDaysideBlend, sunOrientation);
-                    gl_FragColor = vec4(0.3, 0.6, 1.0, 1.0) * fresnel * daySide * 1.5;
+                    vec3 skyHi = vec3(0.30, 0.55, 1.0);
+                    vec3 skyLo = vec3(0.55, 0.75, 1.0);
+                    vec3 col = mix(skyHi, skyLo, fres);
+                    gl_FragColor = vec4(col, 1.0) * fres * daySide * 1.6;
                 }
             `,
             blending: THREE.AdditiveBlending,
@@ -626,6 +650,29 @@ export class StarlinkTracker {
         this.scene.add(atmoMesh);
         this._disposables.push(atmoGeo);
         this._disposables.push(this.atmoMat);
+
+        if (!this.isMobile) {
+            const cloudGeo = new THREE.SphereGeometry(
+                CONSTANTS.EARTH_RADIUS_KM * CONSTANTS.RENDER_SCALE * 1.01,
+                48,
+                48
+            );
+            const cloudTex = loader.load(this.config.urls.earthClouds, (tex) =>
+                this._configureTexture(tex)
+            );
+            const cloudMat = new THREE.MeshLambertMaterial({
+                map: cloudTex,
+                alphaMap: cloudTex,
+                transparent: true,
+                depthWrite: false,
+                opacity: 0.85
+            });
+            this.cloudMesh = new THREE.Mesh(cloudGeo, cloudMat);
+            this.earthGroup.add(this.cloudMesh);
+            this._disposables.push(cloudGeo);
+            this._disposables.push(cloudMat);
+            this._disposables.push(cloudTex);
+        }
     }
 
     /**
@@ -713,7 +760,7 @@ export class StarlinkTracker {
      */
     setupLighting() {
         this.scene.add(new THREE.AmbientLight(0x111111));
-        this.sunLight = new THREE.DirectionalLight(0xffffff, 2.5);
+        this.sunLight = new THREE.DirectionalLight(0xffffff, 2.2);
         this.scene.add(this.sunLight);
     }
 
@@ -2413,6 +2460,7 @@ export class StarlinkTracker {
             this.updateCameraAnimation();
             this.updateFollowMode();
             this.controls.update();
+            if (this.cloudMesh) this.cloudMesh.rotation.y += 0.00002;
             this.updatePhysics();
             this.checkRaycast();
             this.updateLayerFades();
