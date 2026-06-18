@@ -2,7 +2,10 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="theme-color" content="#0a0f19">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>Sat-Track - Real-time Satellite Constellation Tracker</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -41,6 +44,7 @@
             font-family: system-ui, -apple-system, sans-serif;
             background: #000;
             touch-action: none;
+            -webkit-tap-highlight-color: transparent;
         }
 
         canvas { display: block; }
@@ -60,6 +64,7 @@
             backdrop-filter: blur(12px);
             -webkit-backdrop-filter: blur(12px);
             overflow-y: auto;
+            overscroll-behavior: contain;
             transition: transform 0.3s ease, opacity 0.3s ease;
         }
 
@@ -71,8 +76,8 @@
 
         #ui-toggle {
             position: fixed;
-            top: 20px;
-            left: 20px;
+            top: calc(20px + env(safe-area-inset-top, 0px));
+            left: calc(20px + env(safe-area-inset-left, 0px));
             width: 44px;
             height: 44px;
             border-radius: 12px;
@@ -309,8 +314,8 @@
 
         #controls {
             position: fixed;
-            bottom: 20px;
-            left: 20px;
+            bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+            left: calc(20px + env(safe-area-inset-left, 0px));
             padding: 10px 12px;
             background: var(--ui-bg);
             border: 1px solid var(--ui-border);
@@ -599,17 +604,85 @@
         body.light-theme .source-badge { color: #fff; }
         body.light-theme .source-badge.cached { color: #fff; }
 
+        /* === Touch-density overrides (coarse pointer only) === */
+        @media (hover: none) and (pointer: coarse) {
+            .action-btn {
+                padding: 12px 8px;
+                font-size: 12px;
+                min-height: 48px;
+            }
+            .action-btn-icon {
+                font-size: 18px;
+            }
+            .toggle-row {
+                padding: 12px;
+                min-height: 48px;
+            }
+            input[type="checkbox"] {
+                transform: scale(1.4);
+            }
+            .search-item {
+                padding: 12px;
+                min-height: 48px;
+            }
+            input[type="range"] {
+                height: 28px;
+            }
+            input[type="range"]::-webkit-slider-thumb {
+                width: 24px;
+                height: 24px;
+            }
+            input[type="range"]::-moz-range-thumb {
+                width: 24px;
+                height: 24px;
+            }
+            #visible-scope-btn,
+            #btn-manual-toggle {
+                padding: 8px 12px;
+                min-height: 40px;
+            }
+            .action-btn:active {
+                background: rgba(51, 170, 255, 0.25);
+                transform: scale(0.97);
+            }
+            .search-item:active {
+                background: rgba(51, 170, 255, 0.25);
+            }
+            #ui-toggle:active {
+                transform: scale(0.92);
+            }
+            .toggle-row:active {
+                background: var(--ui-item-bg);
+            }
+        }
+
         @media (max-width: 768px) {
             #ui-container {
                 width: calc(100% - 40px);
                 max-height: 70vh;
-                top: 70px;
+                max-height: calc(100dvh - 90px);
+                top: calc(70px + env(safe-area-inset-top, 0px));
             }
             #controls {
-                bottom: 10px;
-                left: 10px;
-                right: 10px;
+                bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+                left: calc(10px + env(safe-area-inset-left, 0px));
+                right: calc(10px + env(safe-area-inset-right, 0px));
                 text-align: center;
+            }
+        }
+
+        /* === Small-phone reflow === */
+        @media (max-width: 480px) {
+            .btn-group {
+                grid-template-columns: repeat(3, 1fr);
+            }
+        }
+        @media (max-width: 340px) {
+            .btn-group {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            #ui-container {
+                width: calc(100% - 20px);
             }
         }
         /* === Map Modal === */
