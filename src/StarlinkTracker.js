@@ -657,9 +657,13 @@ export class StarlinkTracker {
                 48,
                 48
             );
-            const cloudTex = loader.load(this.config.urls.earthClouds, (tex) =>
-                this._configureTexture(tex)
-            );
+            // Reveal the cloud shell only once its texture has loaded — otherwise
+            // an unloaded map samples as opaque white and flashes a white sphere
+            // over the globe on slow connections.
+            const cloudTex = loader.load(this.config.urls.earthClouds, (tex) => {
+                this._configureTexture(tex);
+                if (this.cloudMesh) this.cloudMesh.visible = true;
+            });
             const cloudMat = new THREE.MeshLambertMaterial({
                 map: cloudTex,
                 alphaMap: cloudTex,
@@ -668,6 +672,7 @@ export class StarlinkTracker {
                 opacity: 0.85
             });
             this.cloudMesh = new THREE.Mesh(cloudGeo, cloudMat);
+            this.cloudMesh.visible = false;
             this.earthGroup.add(this.cloudMesh);
             this._disposables.push(cloudGeo);
             this._disposables.push(cloudMat);
