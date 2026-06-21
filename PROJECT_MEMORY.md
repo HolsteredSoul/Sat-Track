@@ -6,6 +6,39 @@
 
 **Status:** ✅ Implemented, integrated, and verified on branch `feat/ui-earth-mobile-polish`. CI-equivalent checks (lint, prettier, 50 tests, build) pass. Browser-verified on desktop (1280) and phone widths (375/360/340/320). Pending: PR review/merge.
 
+## Round 2 — deferred polish (branch `feat/ui-polish-round-2`)
+
+✅ Implemented, integrated, and verified. CI-equivalent checks (lint, 50 tests, build) pass on the merged branch. Addresses the two deferred follow-ups from round 1.
+
+### A6 — Ocean sun-glint tuning (`src/StarlinkTracker.js`, `src/constants.js`)
+
+The round-1 glint (`uSpecStrength 0.6`, power `60`) read too hot head-on. Lowered and made tunable:
+
+- New constants in `src/constants.js`: `EARTH_SPEC_STRENGTH: 0.35`, `EARTH_SPEC_POWER: 48`.
+- New `uSpecPower` uniform wired through `initialUniforms` + the fragment shader; the hardcoded `60.0` exponent is now `uSpecPower`.
+- The water-texture load callback sets `uSpecStrength = CONSTANTS.EARTH_SPEC_STRENGTH` (was `0.6`); fail-soft unchanged (still starts `0.0`).
+- Frame invariant (`earthGroup.rotation.y = -π/2`), tint color, half-vector, and `mixVal` day-side gating all untouched.
+
+### B7 — iOS range-slider thumb (`index.html` inline CSS)
+
+The round-1 coarse-pointer `::-webkit-slider-thumb { width/height }` was a no-op on iOS Safari because the base `input[type="range"]` lacked `-webkit-appearance: none`. Fully self-styled the control:
+
+- Base `input[type="range"]`: `-webkit-appearance: none` + `appearance: none`; removed the now-no-op `accent-color`; added `:focus-visible` (accent outline) and `:disabled` (50% opacity) rules.
+- Styled `::-webkit-slider-runnable-track` / `::-moz-range-track` (6px pill, var-themed) and `::-webkit-slider-thumb` / `::-moz-range-thumb` (16px accent circle). WebKit thumb `margin-top: -4px` (centers 16px thumb on 8px track; math commented inline).
+- Coarse-pointer block: thumb bumped to 24px with `margin-top: -8px` (24px on 8px track; math commented). Mozilla thumb needs no margin-top (auto-centers). Coarse block still gated inside `@media (hover: none) and (pointer: coarse)` — desktop untouched.
+- All colors via CSS vars (`--accent`, `--ui-item-bg`, `--ui-border`, `--ui-item-border`) → both dark and light themes render correctly. All 4 sliders (`growthSlider`, `timeSpeed`, `pixelSizeSlider`, `min-el-slider`) restyled uniformly.
+
+### Round-2 verification
+
+- [x] Frame intact; fail-soft preserved (uSpecStrength starts 0.0); `uSpecPower` declared + used; no new deps/textures/meshes.
+- [x] Coarse gating preserved; no horizontal overflow (slider widths unchanged); light+dark theme-agnostic via vars.
+- [x] `npm run lint`, `npm test` (50 pass), `npm run build` all green on `feat/ui-polish-round-2`. Prettier: committed blobs are LF-clean (CI runs on ubuntu-latest; local Windows `autocrlf=true` flags CRLF in the working tree only — not a real violation).
+- [x] Pre-existing >500 kB chunk-size build warning unchanged (not introduced here).
+
+### Round-2 delivery
+
+Worktree-isolated parallel code agents (one per workstream) + orchestrator-run adversarial QA review (subagent QA returned empty, so the orchestrator performed the full checklist directly), then `--no-ff` merge of both worktree branches, full CI gate, and worktree/branch pruning. Commits: `ed4a537` (Earth), `ac8fcf3` (Mobile), merges `f5b1a19` + `db3d8fa`.
+
 ## What changed
 
 ### Earth visuals (`src/StarlinkTracker.js`, `src/constants.js`)
