@@ -523,10 +523,11 @@ export class StarlinkTracker {
             uTerminatorEnd: { value: CONSTANTS.TERMINATOR_BLEND_END },
             uScatterStart: { value: CONSTANTS.ATMOSPHERE_SCATTER_START },
             uSpecStrength: { value: 0.0 },
+            uSpecPower: { value: CONSTANTS.EARTH_SPEC_POWER },
             specularMap: {
                 value: loader.load(this.config.urls.earthWater, (tex) => {
                     this._configureTexture(tex);
-                    this.earthMat.uniforms.uSpecStrength.value = 0.6;
+                    this.earthMat.uniforms.uSpecStrength.value = CONSTANTS.EARTH_SPEC_STRENGTH;
                 })
             }
         };
@@ -561,6 +562,7 @@ export class StarlinkTracker {
                 uniform float uScatterStart;
                 uniform sampler2D specularMap;
                 uniform float uSpecStrength;
+                uniform float uSpecPower;
                 varying vec2 vUv;
                 varying vec3 vWorldNormal;
                 varying vec3 vViewDir;
@@ -575,7 +577,7 @@ export class StarlinkTracker {
                     final += atmosphere * scatter * 0.5 * (1.0 - mixVal);
                     float ocean = texture2D(specularMap, vUv).r;
                     vec3 H = normalize(sunDirection + vViewDir);
-                    float spec = pow(max(dot(vWorldNormal, H), 0.0), 60.0);
+                    float spec = pow(max(dot(vWorldNormal, H), 0.0), uSpecPower);
                     final += vec3(1.0, 0.95, 0.85) * spec * ocean * uSpecStrength * mixVal;
                     gl_FragColor = vec4(final, 1.0);
                 }
