@@ -41,6 +41,8 @@ export const CONSTANTS = {
     // The atmosphere shell uses an intentionally wider terminator than the
     // Earth surface so its blue rim fades softly across the day/night boundary.
     ATMOSPHERE_DAYSIDE_BLEND: 0.3,
+    EARTH_SPEC_STRENGTH: 0.35, // ocean sun-glint intensity; was hardcoded 0.6 which read too hot head-on
+    EARTH_SPEC_POWER: 48, // Blinn-Phong specular exponent for the glint; was 60, lowered for a broader, softer highlight
 
     // === Network & Caching ===
     CACHE_TTL_MS: 3600000,
