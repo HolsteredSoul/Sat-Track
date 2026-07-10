@@ -43,6 +43,8 @@ export const CONSTANTS = {
     ATMOSPHERE_DAYSIDE_BLEND: 0.3,
     EARTH_SPEC_STRENGTH: 0.35, // ocean sun-glint intensity; was hardcoded 0.6 which read too hot head-on
     EARTH_SPEC_POWER: 48, // Blinn-Phong specular exponent for the glint; was 60, lowered for a broader, softer highlight
+    // Decorative cloud-shell spin (desktop only). ~0.00002 rad/frame at 60 Hz.
+    EARTH_CLOUD_DRIFT_RAD_PER_SEC: 0.0012,
 
     // === Network & Caching ===
     CACHE_TTL_MS: 3600000,
