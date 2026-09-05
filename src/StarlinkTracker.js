@@ -8,6 +8,8 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import * as satellite from 'satellite.js';
 import { CONSTANTS } from './constants.js';
+import { OrbitalDataStore, describeEpoch, validPV } from './orbitalData.js';
+import { TrackingClock } from './trackingClock.js';
 import {
     computeShadowFactorKm,
     calculateSunDirection,
@@ -16,13 +18,11 @@ import {
     calculateAzimuth,
     azimuthToCardinal,
     isMobileDevice,
-    validateTLE,
     clampPointSize
 } from './core.js';
 import {
     handleError,
     showErrorToast,
-    retryWithBackoff,
     createISSIcon,
     saveThemePreference,
     loadThemePreference,
@@ -60,8 +60,7 @@ export class StarlinkTracker {
                 earthDayHi: CONSTANTS.EARTH_DAY_TEXTURE_HI,
                 earthWater: CONSTANTS.EARTH_WATER_TEXTURE,
                 earthClouds: CONSTANTS.EARTH_CLOUDS_TEXTURE,
-                tle: CONSTANTS.TLE_URLS,
-                tleJson: CONSTANTS.TLE_JSON_URLS
+                orbitalData: CONSTANTS.GP_JSON_URLS
             }
         };
 
@@ -136,9 +135,17 @@ export class StarlinkTracker {
         };
 
         // === State Variables ===
-        this.referenceTime = null;
-        this.primarySatrec = null;
-        this.simStartTime = performance.now();
+        this.clock = new TrackingClock();
+        let storage;
+        try {
+            storage = window.localStorage;
+        } catch {
+            /* Private mode. */
+        }
+        this.dataStore = new OrbitalDataStore({ storage });
+        this._lifetime = new AbortController();
+        this._generation = 0;
+        this._lastFreshnessUpdate = 0;
         this.lastPhysicsUpdate = 0;
         this.lastRaycastUpdate = 0;
         this.sunPosition = new THREE.Vector3();
@@ -151,7 +158,6 @@ export class StarlinkTracker {
 
         // === Pause State ===
         this.paused = false;
-        this.pauseWallTime = 0;
 
         // === Auto-Rotation State ===
         this.autoRotateEnabled = false; // user preference; selection may override temporarily
@@ -210,6 +216,9 @@ export class StarlinkTracker {
             dark: document.getElementById('darkCount'),
             statusText: document.getElementById('status-text'),
             statusDot: document.getElementById('status-dot'),
+            clockStatus: document.getElementById('clock-status'),
+            dataHealth: document.getElementById('data-health'),
+            selectedEpoch: document.getElementById('selected-epoch'),
             tooltip: document.getElementById('tooltip'),
             slider: document.getElementById('growthSlider'),
             speedSlider: document.getElementById('timeSpeed'),
@@ -307,6 +316,8 @@ export class StarlinkTracker {
             this.worker.onerror = (err) => {
                 handleError('Propagation worker', err);
                 this.workerAvailable = false;
+                this.workerBusy = false;
+                this.worker?.terminate();
             };
             this.workerAvailable = true;
         } catch (e) {
@@ -328,7 +339,8 @@ export class StarlinkTracker {
                         alt: sat.alt,
                         incDeg: sat.inc * (180 / Math.PI),
                         raanDeg: sat.raan0 * (180 / Math.PI),
-                        anomalyDeg: sat.anomaly0 * (180 / Math.PI)
+                        anomalyDeg: sat.anomaly0 * (180 / Math.PI),
+                        epoch: sat.epoch
                     };
                 }
                 return null;
@@ -354,9 +366,7 @@ export class StarlinkTracker {
     /** Handles result messages from the propagation worker. */
     _handleWorkerResult(data) {
         this.workerBusy = false;
-        if (data.simDateMs) {
-            this.currentSimDate = new Date(data.simDateMs);
-        }
+        if (this.isDisposed || data.generation !== this._generation) return;
 
         for (const key of this.layerOrder) {
             const layer = data.layers[key];
@@ -365,12 +375,11 @@ export class StarlinkTracker {
             if (!mesh) continue;
             const posAttr = mesh.geometry.attributes.position;
             const colAttr = mesh.geometry.attributes.color;
-            posAttr.array = layer.positions;
-            posAttr.count = layer.activeCount;
+            posAttr.array.set(layer.positions);
+            posAttr.array.fill(0, layer.activeCount * 3);
             posAttr.needsUpdate = true;
             mesh.geometry.boundingSphere = null; // force recompute from real positions on next raycast
-            colAttr.array = layer.colors;
-            colAttr.count = layer.activeCount;
+            colAttr.array.set(layer.colors);
             colAttr.needsUpdate = true;
             mesh.geometry.setDrawRange(0, layer.activeCount);
         }
@@ -385,7 +394,7 @@ export class StarlinkTracker {
             }
         }
 
-        if (data.tooltipData) {
+        if (data.tooltipData && (this.selected || this.hovered)) {
             const td = data.tooltipData;
             this.updateTooltip(td.layerKey, td.idx, td.distKm, td.speed, td.shadow, td.isLocked);
         }
@@ -907,8 +916,14 @@ export class StarlinkTracker {
             this.mouseMoved = true;
             const tip = this.ui.tooltip;
             if (tip.style.display === 'block') {
-                tip.style.left = e.clientX + 20 + 'px';
-                tip.style.top = e.clientY + 20 + 'px';
+                tip.style.left =
+                    Math.max(8, Math.min(e.clientX + 20, window.innerWidth - tip.offsetWidth - 8)) +
+                    'px';
+                tip.style.top =
+                    Math.max(
+                        8,
+                        Math.min(e.clientY + 20, window.innerHeight - tip.offsetHeight - 8)
+                    ) + 'px';
             }
         };
         window.addEventListener('mousemove', this._boundHandlers.mouseMove);
@@ -951,6 +966,9 @@ export class StarlinkTracker {
         this._boundHandlers.searchClick = (e) => {
             const item = e.target.closest('.search-item');
             if (item) {
+                // Selection removes the result from the DOM; don't let its click
+                // reach the globe handler and immediately deselect it.
+                e.stopPropagation();
                 const layer = item.dataset.layer;
                 const index = parseInt(item.dataset.index, 10);
                 this.selectSatellite(layer, index);
@@ -1057,7 +1075,10 @@ export class StarlinkTracker {
 
         // Speed slider
         this._boundHandlers.speedInput = (e) => {
+            this.clock.setSpeed(Number(e.target.value));
+            this._generation++;
             this.ui.speedDisplay.textContent = e.target.value;
+            this.updateDataHealth();
         };
         this.ui.speedSlider.addEventListener('input', this._boundHandlers.speedInput);
 
@@ -1291,6 +1312,7 @@ export class StarlinkTracker {
      * Resets the current satellite selection.
      */
     resetSelection() {
+        this._generation++;
         if (!this.selected) return;
         try {
             const { layer, index } = this.selected;
@@ -1335,6 +1357,9 @@ export class StarlinkTracker {
      * @param {number} index - Satellite index
      */
     selectSatellite(layerKey, index) {
+        if (!Number.isInteger(index) || index < 0 || !this.layerData[layerKey]?.satData[index])
+            return;
+        this._generation++;
         try {
             if (this.selected) {
                 const prev = this.selected;
@@ -1553,320 +1578,105 @@ export class StarlinkTracker {
      * Loads TLE data for all constellation layers.
      */
     async loadData() {
-        this.updateStatus('Downloading orbital data...', 'status-warn');
-        this.ui.progress.style.width = '10%';
-
+        this.updateStatus('Acquiring orbital data...', 'status-warn');
         let completed = 0;
-        const total = this.layerOrder.length;
-        this.ui.loaderText.textContent = 'Fetching satellite data...';
-
         await Promise.allSettled(
             this.layerOrder.map(async (key) => {
-                const tleUrl = this.config.urls.tle[key];
                 try {
-                    const res = await this.fetchTLEWithCache(tleUrl, key, key);
-                    if (res && res.text) {
-                        this.processTLEForLayer(res.text, key, res.source);
-                        this.updateBadge(key, res.source, res.cacheAge);
-                    } else {
-                        this.generateSimulationLayer(key);
-                        this.updateBadge(key, 'sim');
-                    }
+                    const result = await this.dataStore.load(
+                        key,
+                        this.config.urls.orbitalData[key],
+                        {
+                            online: navigator.onLine
+                        }
+                    );
+                    if (this.isDisposed) return;
+                    if (result) this.applyOrbitalLayer(key, result);
+                    else this.useSimulation(key);
                 } catch (error) {
-                    handleError(`Load ${key} data`, error);
-                    this.generateSimulationLayer(key);
-                    this.updateBadge(key, 'sim');
+                    if (this.isDisposed) return;
+                    handleError(`Load ${key}`, error);
+                    this.useSimulation(key);
                 }
-
-                completed++;
-                const pct = 10 + Math.round((completed / total) * 70);
-                this.ui.progress.style.width = `${pct}%`;
+                this.ui.progress.style.width = `${10 + (++completed / this.layerOrder.length) * 70}%`;
             })
         );
-
+        if (this.isDisposed) return;
         await this.initTimeSync();
+        if (this.isDisposed) return;
         this.createLayerMeshes();
         this._postWorkerInit();
         this.rebuildSearchIndex();
         this.restoreFromURL();
-
+        this.updateDataHealth();
+        this.updateStatus('Tracking ready', 'status-ok');
         this.ui.progress.style.width = '100%';
-        if (!this.ui.statusText.innerText.includes('Synced')) {
-            this.updateStatus('Ready', 'status-ok');
-        }
         this.ui.loader.classList.add('hidden');
     }
 
-    /**
-     * Fetches TLE data with caching support and age tracking.
-     * @param {string} tleUrl - URL to fetch TLE from
-     * @param {string} key - Cache key identifier
-     * @param {string} layerKey - Layer identifier
-     * @returns {Promise<{ text: string, source: string, cacheAge?: number } | null>}
-     */
-    async fetchTLEWithCache(tleUrl, key, layerKey) {
-        const cacheKey = `tle_cache_${key}`;
-
-        // Check cache
-        try {
-            const cached = localStorage.getItem(cacheKey);
-            if (cached) {
-                const { data, timestamp } = JSON.parse(cached);
-                const age = Date.now() - timestamp;
-                if (age < CONSTANTS.CACHE_TTL_MS) {
-                    return { text: data, source: 'cached', cacheAge: age };
-                }
-            }
-        } catch (e) {
-            handleError('Cache read', e);
-        }
-
-        // Offline fallback: use stale cache
-        if (!navigator.onLine) {
-            try {
-                const cached = localStorage.getItem(cacheKey);
-                if (cached) {
-                    const { data, timestamp } = JSON.parse(cached);
-                    const age = Date.now() - timestamp;
-                    return { text: data, source: 'cached', cacheAge: age };
-                }
-            } catch (e) {
-                handleError('Offline cache read', e);
-            }
-            return null;
-        }
-
-        // Fetch fresh — hard cap per layer so the waterfall never blocks indefinitely
-        const result = await Promise.race([
-            this.fetchWithFallback(tleUrl, layerKey),
-            new Promise((resolve) =>
-                setTimeout(() => resolve(null), CONSTANTS.FETCH_TIMEOUT_MAX_TOTAL)
-            )
-        ]);
-
-        if (result && result.text) {
-            try {
-                localStorage.setItem(
-                    cacheKey,
-                    JSON.stringify({
-                        data: result.text,
-                        timestamp: Date.now()
-                    })
-                );
-            } catch (e) {
-                handleError('Cache write', e);
-            }
-            return result;
-        }
-
-        // All network methods failed — use stale cache rather than falling back to simulated orbits
-        try {
-            const stale = localStorage.getItem(cacheKey);
-            if (stale) {
-                const { data, timestamp } = JSON.parse(stale);
-                const age = Date.now() - timestamp;
-                return { text: data, source: 'cached', cacheAge: age };
-            }
-        } catch (e) {
-            handleError('Stale cache fallback', e);
-        }
-
-        return null;
+    applyOrbitalLayer(key, result) {
+        this.layerData[key] = result;
+        this.updateBadge(key, result.source);
     }
 
-    /**
-     * Fetches TLE data with multiple fallback methods and retry logic.
-     * @param {string} tleUrl - Primary URL
-     * @param {string} layerKey - Layer identifier
-     * @returns {Promise<{ text: string, source: string } | null>}
-     */
-    async fetchWithFallback(tleUrl, layerKey) {
-        const attemptFetch = async (url, timeout = CONSTANTS.FETCH_TIMEOUT_PROXY) => {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), timeout);
-            try {
-                const res = await fetch(url, { signal: controller.signal, mode: 'cors' });
-                if (!res.ok) throw new Error(res.statusText);
-                return await res.text();
-            } finally {
-                clearTimeout(timeoutId);
-            }
-        };
-
-        const jsonToTLE = (jsonData) => {
-            const lines = [];
-            for (const sat of jsonData) {
-                if (sat.TLE_LINE1 && sat.TLE_LINE2) {
-                    lines.push(sat.OBJECT_NAME || 'UNKNOWN');
-                    lines.push(sat.TLE_LINE1);
-                    lines.push(sat.TLE_LINE2);
-                }
-            }
-            return lines.join('\n');
-        };
-
-        // 1. Direct fetch with retry (CelesTrak supports CORS natively)
-        // maxAttempts:2 keeps worst-case under 21s so JSON format can still run
-        // within the FETCH_TIMEOUT_MAX_TOTAL:30s race window.
-        try {
-            const text = await retryWithBackoff(
-                () => attemptFetch(tleUrl, CONSTANTS.FETCH_TIMEOUT_DIRECT),
-                { maxAttempts: 2, baseDelay: 1000 }
-            );
-            if (text && text.includes('1 ')) {
-                return { text, source: 'live' };
-            }
-        } catch (e) {
-            console.log(`[${layerKey}] Direct fetch failed: ${e.message}`);
-        }
-
-        // 2. JSON format with retry — different endpoint, independent chance of success
-        try {
-            const jsonUrl = this.config.urls.tleJson[layerKey];
-            if (jsonUrl) {
-                const jsonText = await retryWithBackoff(
-                    () => attemptFetch(jsonUrl, CONSTANTS.FETCH_TIMEOUT_DIRECT),
-                    { maxAttempts: 2, baseDelay: 1000 }
-                );
-                const jsonData = JSON.parse(jsonText);
-                if (Array.isArray(jsonData) && jsonData.length > 0) {
-                    const tleText = jsonToTLE(jsonData);
-                    if (tleText && tleText.includes('1 ')) {
-                        return { text: tleText, source: 'live' };
-                    }
-                }
-            }
-        } catch (e) {
-            console.log(`[${layerKey}] JSON format failed: ${e.message}`);
-        }
-
-        // 3. CORS proxies with retry
-        for (const proxy of CONSTANTS.CORS_PROXIES) {
-            try {
-                const proxyUrl = proxy.template.replace('{url}', encodeURIComponent(tleUrl));
-                const text = await retryWithBackoff(
-                    () => attemptFetch(proxyUrl, CONSTANTS.FETCH_TIMEOUT_PROXY),
-                    { maxAttempts: 1, baseDelay: 0 }
-                );
-
-                let tleData = text;
-                if (proxy.parseJson) {
-                    const json = JSON.parse(text);
-                    tleData = json[proxy.field] || json.body || json.data;
-                }
-
-                if (tleData && tleData.includes('1 ')) {
-                    return { text: tleData, source: 'live' };
-                }
-            } catch (e) {
-                console.log(`[${layerKey}] ${proxy.name} failed: ${e.message}`);
-                continue;
-            }
-        }
-
-        console.error(`[${layerKey}] All fetch methods failed`);
-        return null;
+    useSimulation(key) {
+        this.generateSimulationLayer(key);
+        this.layerData[key].source = 'sim';
+        this.updateBadge(key, 'sim');
     }
 
-    /**
-     * Updates the data source badge for a layer.
-     * @param {string} key - Layer identifier
-     * @param {string} source - Data source ('live', 'cached', 'sim')
-     * @param {number} [cacheAge] - Cache age in milliseconds
-     */
-    updateBadge(key, source, cacheAge) {
+    updateBadge(key, source) {
+        this.layers[key].source = source;
         const badge = this.ui.badges[key];
         if (!badge) return;
-
-        badge.className = 'source-badge';
-        if (source === 'live') {
-            badge.classList.add('live');
-            badge.textContent = 'LIVE';
-        } else if (source === 'cached') {
-            badge.classList.add('cached');
-            if (cacheAge && cacheAge > CONSTANTS.CACHE_STALE_WARNING_MS) {
-                const mins = Math.round(cacheAge / 60000);
-                badge.textContent = `CACHED ${mins}m`;
-                badge.title = `Data is ${mins} minutes old`;
-            } else {
-                badge.textContent = 'CACHED';
-            }
-        } else {
-            badge.classList.add('sim');
-            badge.textContent = 'SIM';
-        }
-        this.layers[key].source = source;
+        const data = this.layerData[key];
+        badge.className = `source-badge ${source}`;
+        badge.textContent =
+            source === 'live'
+                ? data?.rejected
+                    ? 'LIVE · PARTIAL'
+                    : 'LIVE'
+                : source === 'cached'
+                  ? 'SAVED'
+                  : 'SIM';
+        badge.title =
+            source === 'sim'
+                ? 'Illustrative orbits; not actual satellites'
+                : `${data?.fetchedAt ? 'Downloaded ' + new Date(data.fetchedAt).toLocaleString() : 'Download time unknown'}. ${data?.warning || ''}`;
     }
 
-    /**
-     * Processes TLE data with validation and creates satellite records.
-     * @param {string} data - Raw TLE text
-     * @param {string} layerKey - Layer identifier
-     * @param {string} sourceLabel - Source label
-     */
-    processTLEForLayer(data, layerKey, sourceLabel) {
-        try {
-            const lines = data
-                .split('\n')
-                .map((l) => l.trim())
-                .filter((l) => l.length > 0);
-            const satData = [];
-            const satNames = [];
-            let skippedCount = 0;
-
-            for (let i = 0; i < lines.length - 2; i++) {
-                const l0 = lines[i];
-                const l1 = lines[i + 1];
-                const l2 = lines[i + 2];
-
-                if (l1.startsWith('1 ') && l2.startsWith('2 ')) {
-                    try {
-                        // ISS layer filter
-                        if (layerKey === 'iss') {
-                            const name = (l0 || '').toUpperCase();
-                            if (!name.includes('ISS')) continue;
-                        }
-
-                        // Validate TLE format
-                        const validation = validateTLE(l0, l1, l2);
-                        if (!validation.valid) {
-                            skippedCount++;
-                            continue;
-                        }
-
-                        const rec = satellite.twoline2satrec(l1, l2);
-                        if (!rec.error) {
-                            rec.isSimulated = false;
-                            rec.epochyr = parseInt(l1.substring(18, 20), 10);
-                            rec.epochdays = parseFloat(l1.substring(20, 32));
-                            satData.push(rec);
-                            satNames.push(l0);
-                            if (!this.primarySatrec) this.primarySatrec = rec;
-                            i += 2;
-                        } else {
-                            skippedCount++;
-                        }
-                    } catch (err) {
-                        skippedCount++;
-                    }
-                }
-            }
-
-            if (skippedCount > 0) {
-                console.warn(`[${layerKey}] Skipped ${skippedCount} invalid TLE entries`);
-            }
-
-            // Fallback for ISS
-            if (layerKey === 'iss' && satData.length === 0) {
-                this.generateSimulationLayer(layerKey);
-                return;
-            }
-
-            this.layerData[layerKey] = { satData, satNames };
-            this.updateStatus(`${this.layers[layerKey].label}: ${sourceLabel}`, 'status-ok');
-        } catch (error) {
-            handleError(`Process TLE for ${layerKey}`, error);
-            this.generateSimulationLayer(layerKey);
+    /** Quiet, once-per-second telemetry; orbital age is relative to the view clock. */
+    updateDataHealth() {
+        if (this.ui.clockStatus) {
+            const mode = this.clock.paused
+                ? 'PAUSED'
+                : this.clock.mode === 'shared'
+                  ? 'SHARED TIME'
+                  : this.clock.mode === 'live'
+                    ? 'NOW'
+                    : `${this.clock.speed}× TIME`;
+            this.ui.clockStatus.textContent = `${mode} · ${this.clock.source}`;
+        }
+        const counts = { live: 0, cached: 0, sim: 0 };
+        for (const key of this.layerOrder) {
+            const data = this.layerData[key];
+            if (data?.source in counts) counts[data.source]++;
+        }
+        if (this.ui.dataHealth)
+            this.ui.dataHealth.textContent = `${counts.live} live · ${counts.cached} saved · ${counts.sim} simulated layers`;
+        if (this.ui.selectedEpoch) {
+            const sat =
+                this.selected && this.layerData[this.selected.layer]?.satData[this.selected.index];
+            this.ui.selectedEpoch.textContent = sat
+                ? describeEpoch(sat.epochMs, this.clock.now())
+                : 'Select a satellite to inspect its orbital epoch';
+            this.ui.selectedEpoch.classList.toggle(
+                'epoch-stale',
+                !!sat?.epochMs && Math.abs(this.clock.now() - sat.epochMs) > 72 * 3600000
+            );
+            this.ui.selectedEpoch.title = sat?.epochMs
+                ? `Orbital epoch: ${new Date(sat.epochMs).toISOString()}. Larger time gaps can reduce position accuracy.`
+                : '';
         }
     }
 
@@ -1902,34 +1712,7 @@ export class StarlinkTracker {
      * Initializes time synchronization.
      */
     async initTimeSync() {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), CONSTANTS.FETCH_TIMEOUT_TIME_API);
-
-        try {
-            const response = await fetch('https://worldtimeapi.org/api/timezone/Etc/UTC', {
-                signal: controller.signal
-            });
-            if (!response.ok) throw new Error(response.statusText);
-            const data = await response.json();
-            this.referenceTime = new Date(data.utc_datetime).getTime();
-            this.updateStatus('UTC Synced (Global API)', 'status-ok');
-        } catch (e) {
-            if (this.primarySatrec && !this.primarySatrec.isSimulated) {
-                const sat = this.primarySatrec;
-                const currentYear = new Date().getFullYear() % 100;
-                const century = sat.epochyr > currentYear + 30 ? 1900 : 2000;
-                const year = century + sat.epochyr;
-                const jan1 = Date.UTC(year, 0, 1);
-                const msOffset = (sat.epochdays - 1) * 24 * 60 * 60 * 1000;
-                this.referenceTime = jan1 + msOffset;
-                this.updateStatus('UTC Synced (TLE Epoch)', 'status-warn');
-            } else {
-                this.referenceTime = Date.now();
-                this.updateStatus('System Clock (Fallback)', 'status-err');
-            }
-        } finally {
-            clearTimeout(timeoutId);
-        }
+        await this.clock.synchronize({ signal: this._lifetime.signal });
     }
 
     /**
@@ -1946,33 +1729,65 @@ export class StarlinkTracker {
      * Refreshes all TLE data from remote sources.
      */
     async refreshData() {
-        this.layerOrder.forEach((key) => {
-            try {
-                localStorage.removeItem(`tle_cache_${key}`);
-            } catch (e) {
-                /* ignore */
-            }
-        });
-
-        this.updateStatus('Refreshing data...', 'status-warn');
-
-        for (const key of this.layerOrder) {
-            try {
-                const tleUrl = this.config.urls.tle[key];
-                const res = await this.fetchTLEWithCache(tleUrl, key, key);
-                if (res && res.text) {
-                    this.processTLEForLayer(res.text, key, res.source);
-                    this.updateBadge(key, res.source, res.cacheAge);
+        if (this._refreshing || this.isDisposed) return;
+        this._refreshing = true;
+        this.updateStatus('Refreshing orbital data...', 'status-warn');
+        try {
+            const results = await Promise.allSettled(
+                this.layerOrder.map((key) =>
+                    this.dataStore.load(key, this.config.urls.orbitalData[key], {
+                        force: true,
+                        online: navigator.onLine
+                    })
+                )
+            );
+            if (this.isDisposed) return;
+            const previous = this.selected;
+            const wasFollowing = this.followMode;
+            const selectedId =
+                previous && this.layerData[previous.layer]?.satData[previous.index]?.catalogId;
+            this._generation++;
+            this.resetSelection();
+            this.hovered = null;
+            let fresh = 0;
+            results.forEach((result, index) => {
+                if (result.status !== 'fulfilled' || !result.value) return;
+                const data = result.value;
+                const key = this.layerOrder[index];
+                // A failed refresh must not replace newer in-memory data with an older cache.
+                if (
+                    data.source === 'live' ||
+                    !this.layerData[key]?.fetchedAt ||
+                    data.fetchedAt >= this.layerData[key].fetchedAt
+                )
+                    this.applyOrbitalLayer(key, data);
+                if (data.source === 'live' && !data.rejected) fresh++;
+            });
+            this.createLayerMeshes();
+            this._postWorkerInit();
+            this.rebuildSearchIndex();
+            if (selectedId) {
+                const index = this.layerData[previous.layer].satData.findIndex(
+                    (sat) => sat.catalogId === selectedId
+                );
+                if (index >= 0) {
+                    this.selectSatellite(previous.layer, index);
+                    this.followMode = wasFollowing;
+                    document.getElementById('btn-follow')?.classList.toggle('active', wasFollowing);
                 }
-            } catch (error) {
-                handleError(`Refresh ${key}`, error);
             }
+            this.updateDataHealth();
+            this.updateStatus(
+                fresh === this.layerOrder.length
+                    ? 'All layers refreshed'
+                    : fresh
+                      ? `Partial refresh · ${fresh}/${this.layerOrder.length} layers updated`
+                      : 'Refresh unavailable · previous data retained',
+                fresh === this.layerOrder.length ? 'status-ok' : 'status-warn'
+            );
+        } finally {
+            this._refreshing = false;
         }
-
-        this.createLayerMeshes();
-        this._postWorkerInit();
-        this.rebuildSearchIndex();
-        this.updateStatus('Data refreshed', 'status-ok');
     }
 
     async handleRefresh() {
@@ -2094,7 +1909,7 @@ export class StarlinkTracker {
      * Dispatches physics work to the Web Worker, or falls back to synchronous update.
      */
     updatePhysics() {
-        if (!this.referenceTime || !this.isInitialized) return;
+        if (!this.isInitialized) return;
         if (this.paused) return;
 
         const now = performance.now();
@@ -2103,9 +1918,7 @@ export class StarlinkTracker {
         this.lastPhysicsUpdate = now;
 
         try {
-            const timeSpeed = parseFloat(this.ui.speedSlider.value);
-            const elapsed = (now - this.simStartTime) * timeSpeed;
-            const simDate = new Date(this.referenceTime + elapsed);
+            const simDate = new Date(this.clock.now());
             this.currentSimDate = simDate;
 
             // Sun position update always stays on main thread (drives shaders + UI)
@@ -2131,6 +1944,7 @@ export class StarlinkTracker {
                 }
                 this.worker.postMessage({
                     type: 'update',
+                    generation: this._generation,
                     simDateMs: simDate.getTime(),
                     selected: this.selected
                         ? { layer: this.selected.layer, index: this.selected.index }
@@ -2209,7 +2023,6 @@ export class StarlinkTracker {
                     activeCount = Math.floor(totalCount * (this.ui.slider.value / 100));
                 }
 
-                totalActive += activeCount;
                 const baseC = this.layers[layerKey].color;
                 const darkC = {
                     r: baseC.r * CONSTANTS.ECLIPSE_DIM_FACTOR,
@@ -2230,7 +2043,7 @@ export class StarlinkTracker {
                     } else {
                         try {
                             const pv = satellite.propagate(sat, simDate);
-                            if (pv.position && !isNaN(pv.position.x)) {
+                            if (validPV(pv)) {
                                 eciPos = pv.position;
                                 vX = pv.velocity.x;
                                 vY = pv.velocity.y;
@@ -2255,6 +2068,7 @@ export class StarlinkTracker {
                     }
 
                     positions.setXYZ(i, x, y, z);
+                    totalActive++;
 
                     const xKm = x / CONSTANTS.RENDER_SCALE;
                     const yKm = y / CONSTANTS.RENDER_SCALE;
@@ -2264,12 +2078,8 @@ export class StarlinkTracker {
                     if (shadow > CONSTANTS.UMBRA_THRESHOLD) dark++;
                     else lit++;
 
-                    const satName = layer.satNames[i] || '';
                     const isISS =
-                        layerKey === 'iss' &&
-                        (satName.toUpperCase().includes('ISS (ZARYA)') ||
-                            satName.toUpperCase() === 'ISS' ||
-                            satName.toUpperCase().includes('ISS ('));
+                        layerKey === 'iss' && (sat.catalogId === '25544' || sat.isSimulated);
 
                     if (isISS) {
                         issPosition = { x, y, z };
@@ -2339,6 +2149,7 @@ export class StarlinkTracker {
                 }
 
                 mesh.geometry.setDrawRange(0, activeCount);
+                mesh.geometry.boundingSphere = null;
                 positions.needsUpdate = true;
                 colors.needsUpdate = true;
             }
@@ -2396,7 +2207,7 @@ export class StarlinkTracker {
                         z = p.z;
                     } else {
                         const pv = satellite.propagate(sat, future);
-                        if (pv.position && !isNaN(pv.position.x)) {
+                        if (validPV(pv)) {
                             const gmst = satellite.gstime(future);
                             const gd = satellite.eciToGeodetic(pv.position, gmst);
                             const alt =
@@ -2448,7 +2259,8 @@ export class StarlinkTracker {
         const els = this.ui.tooltipElements;
         els.name.textContent = rawName;
         els.layer.textContent = `Layer: ${this.layers[layerKey].label}`;
-        els.id.textContent = `ID: ${idx}`;
+        const sat = this.layerData[layerKey].satData[idx];
+        els.id.textContent = sat.catalogId ? `NORAD: ${sat.catalogId}` : 'Illustrative satellite';
         els.alt.textContent = `Alt: ${alt.toFixed(1)} km`;
         els.vel.textContent = `Vel: ${velFmt}`;
         els.light.textContent = `Light: ${eclipseStr}`;
@@ -2525,6 +2337,10 @@ export class StarlinkTracker {
             }
             this._lastAnimTime = now;
             this.updatePhysics();
+            if (now - this._lastFreshnessUpdate > 1000) {
+                this._lastFreshnessUpdate = now;
+                this.updateDataHealth();
+            }
             this.checkRaycast();
             this.updateLayerFades();
             this.updateSatelliteLabel();
@@ -3015,7 +2831,7 @@ export class StarlinkTracker {
                 const date = new Date(t);
                 try {
                     const pv = satellite.propagate(sat, date);
-                    if (!pv.position || isNaN(pv.position.x)) continue;
+                    if (!validPV(pv)) continue;
                     const gmst = satellite.gstime(date);
                     const el = calculateElevation(observer, pv.position, gmst);
                     const az = calculateAzimuth(observer, pv.position, gmst);
@@ -3151,7 +2967,7 @@ export class StarlinkTracker {
                 if (sat.isSimulated) continue;
                 try {
                     const pv = satellite.propagate(sat, simDate);
-                    if (!pv.position || isNaN(pv.position.x)) continue;
+                    if (!validPV(pv)) continue;
                     if (calculateElevation(observer, pv.position, gmst) >= minEl) count++;
                 } catch (e) {
                     /* skip */
@@ -3243,43 +3059,27 @@ export class StarlinkTracker {
     // ========================================================================
 
     /**
-     * Toggles simulation pause state. When unpausing, shifts simStartTime so
-     * the simulation continues from the exact moment it was frozen.
+     * Toggles the monotonic clock without changing the current simulation instant.
      */
     togglePause() {
-        if (this.paused) {
-            // Shift the start time forward by how long we were paused so elapsed
-            // time continues seamlessly from the frozen moment.
-            this.simStartTime += performance.now() - this.pauseWallTime;
-            this.paused = false;
-        } else {
-            this.pauseWallTime = performance.now();
-            this.paused = true;
-        }
-        if (this.ui.pauseIndicator) {
+        this.clock.togglePause();
+        this._generation++;
+        this.paused = this.clock.paused;
+        if (this.ui.pauseIndicator)
             this.ui.pauseIndicator.style.display = this.paused ? 'block' : 'none';
-        }
+        this.updateDataHealth();
     }
 
-    /**
-     * Snaps the simulation clock back to the actual current wall-clock time.
-     * Unpauses if paused and resets speed to 1x.
-     */
+    /** Return to device time with continuous 1x tracking. */
     resetToNow() {
-        this.referenceTime = Date.now();
-        this.simStartTime = performance.now();
-
-        // Unpause if frozen
-        if (this.paused) {
-            this.paused = false;
-            if (this.ui.pauseIndicator) this.ui.pauseIndicator.style.display = 'none';
-        }
-
-        // Restore speed to real-time
-        if (this.ui.speedSlider) {
-            this.ui.speedSlider.value = 1;
-            this.ui.speedDisplay.textContent = '1';
-        }
+        this.clock.reset();
+        this._generation++;
+        this.currentSimDate = new Date(this.clock.now());
+        this.paused = false;
+        if (this.ui.pauseIndicator) this.ui.pauseIndicator.style.display = 'none';
+        this.ui.speedSlider.value = 1;
+        this.ui.speedDisplay.textContent = '1';
+        this.updateDataHealth();
     }
 
     // ========================================================================
@@ -3295,7 +3095,9 @@ export class StarlinkTracker {
         const params = new URLSearchParams();
 
         if (this.selected) {
-            params.set('sat', `${this.selected.layer}:${this.selected.index}`);
+            const sat = this.layerData[this.selected.layer]?.satData[this.selected.index];
+            if (sat?.catalogId) params.set('norad', `${this.selected.layer}:${sat.catalogId}`);
+            else params.set('sat', `${this.selected.layer}:${this.selected.index}`);
         }
 
         if (this.camera) {
@@ -3344,14 +3146,17 @@ export class StarlinkTracker {
         }
 
         if (params.has('t')) {
-            const epoch = new Date(params.get('t')).getTime();
-            if (!isNaN(epoch)) {
-                this.referenceTime = epoch;
-                this.simStartTime = performance.now();
+            if (this.clock.restore(params.get('t'))) {
+                this._generation++;
+                this.currentSimDate = new Date(this.clock.now());
             }
         }
 
-        if (params.has('sat')) {
+        if (params.has('norad')) {
+            const [layer, id] = params.get('norad').split(':');
+            const index = this.layerData[layer]?.satData.findIndex((sat) => sat.catalogId === id);
+            if (index >= 0) this.selectSatellite(layer, index);
+        } else if (params.has('sat')) {
             const [layer, idxStr] = params.get('sat').split(':');
             const index = parseInt(idxStr, 10);
             if (layer && !isNaN(index) && this.layerData[layer]) {
@@ -3417,6 +3222,9 @@ export class StarlinkTracker {
      */
     dispose() {
         this.isDisposed = true;
+        this._lifetime.abort();
+        this.dataStore.dispose();
+        this._generation++;
         // Prevent late texture onLoad callbacks from revealing/configuring torn-down meshes.
         this.cloudMesh = null;
 

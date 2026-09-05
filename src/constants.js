@@ -47,17 +47,9 @@ export const CONSTANTS = {
     EARTH_CLOUD_DRIFT_RAD_PER_SEC: 0.0012,
 
     // === Network & Caching ===
-    CACHE_TTL_MS: 3600000,
-    CACHE_STALE_WARNING_MS: 1800000,
+    CACHE_TTL_MS: 7200000,
     FETCH_TIMEOUT_DIRECT: 10000,
-    FETCH_TIMEOUT_PROXY: 10000,
     FETCH_TIMEOUT_TIME_API: 5000,
-    FETCH_TIMEOUT_MAX_TOTAL: 30000,
-
-    // === Retry Configuration ===
-    RETRY_MAX_ATTEMPTS: 3,
-    RETRY_BASE_DELAY_MS: 1000,
-    RETRY_BACKOFF_MULTIPLIER: 2,
 
     // === Camera & Controls ===
     CAMERA_FOV: 45,
@@ -100,7 +92,7 @@ export const CONSTANTS = {
     // === Texture URLs ===
     EARTH_DAY_TEXTURE: 'https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg',
     EARTH_NIGHT_TEXTURE: 'https://unpkg.com/three-globe/example/img/earth-night.jpg',
-    EARTH_DAY_TEXTURE_HI: '/textures/earth-day-8k.jpg',
+    EARTH_DAY_TEXTURE_HI: `${import.meta.env?.BASE_URL || './'}textures/earth-day-8k.jpg`,
     EARTH_WATER_TEXTURE: 'https://unpkg.com/three-globe/example/img/earth-water.png',
     EARTH_CLOUDS_TEXTURE: 'https://unpkg.com/three-globe/example/img/earth-clouds.png',
 
@@ -110,18 +102,8 @@ export const CONSTANTS = {
     EARTH_LOD_CHECK_MS: 500,
     EARTH_LOD_LOAD_TIMEOUT_MS: 15000,
 
-    // === TLE Data Sources ===
-    TLE_URLS: {
-        starlink: 'https://celestrak.org/NORAD/elements/gp.php?GROUP=starlink&FORMAT=tle',
-        iss: 'https://celestrak.org/NORAD/elements/gp.php?GROUP=stations&FORMAT=tle',
-        gps: 'https://celestrak.org/NORAD/elements/gp.php?GROUP=gps-ops&FORMAT=tle',
-        galileo: 'https://celestrak.org/NORAD/elements/gp.php?GROUP=galileo&FORMAT=tle',
-        oneweb: 'https://celestrak.org/NORAD/elements/gp.php?GROUP=oneweb&FORMAT=tle',
-        iridium: 'https://celestrak.org/NORAD/elements/gp.php?GROUP=iridium-NEXT&FORMAT=tle',
-        glonass: 'https://celestrak.org/NORAD/elements/gp.php?GROUP=glo-ops&FORMAT=tle',
-        beidou: 'https://celestrak.org/NORAD/elements/gp.php?GROUP=beidou&FORMAT=tle'
-    },
-    TLE_JSON_URLS: {
+    // === Native CelesTrak OMM JSON sources ===
+    GP_JSON_URLS: {
         starlink: 'https://celestrak.org/NORAD/elements/gp.php?GROUP=starlink&FORMAT=json',
         iss: 'https://celestrak.org/NORAD/elements/gp.php?GROUP=stations&FORMAT=json',
         gps: 'https://celestrak.org/NORAD/elements/gp.php?GROUP=gps-ops&FORMAT=json',
@@ -131,18 +113,6 @@ export const CONSTANTS = {
         glonass: 'https://celestrak.org/NORAD/elements/gp.php?GROUP=glo-ops&FORMAT=json',
         beidou: 'https://celestrak.org/NORAD/elements/gp.php?GROUP=beidou&FORMAT=json'
     },
-
-    // === CORS Proxies ===
-    // Used as fallback when direct CelesTrak access is blocked (firewall, region, etc.).
-    // CelesTrak also supports CORS natively so direct fetch is always tried first.
-    CORS_PROXIES: [
-        { name: 'corsproxy.io', template: 'https://corsproxy.io/?{url}', parseJson: false },
-        {
-            name: 'codetabs',
-            template: 'https://api.codetabs.com/v1/proxy?quest={url}',
-            parseJson: false
-        }
-    ],
 
     // === Simulation Shell Parameters ===
     SIM_SHELLS: {

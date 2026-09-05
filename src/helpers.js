@@ -38,36 +38,6 @@ export function handleError(context, error, showToUser = false) {
 }
 
 /**
- * Retries an async operation with exponential backoff.
- * @param {function(): Promise<*>} fn - The async function to retry
- * @param {object} [opts] - Options
- * @param {number} [opts.maxAttempts] - Maximum number of attempts
- * @param {number} [opts.baseDelay] - Base delay in ms
- * @param {number} [opts.multiplier] - Backoff multiplier
- * @returns {Promise<*>} The result of the function
- * @throws {Error} The last error if all attempts fail
- */
-export async function retryWithBackoff(fn, opts = {}) {
-    const maxAttempts = opts.maxAttempts ?? CONSTANTS.RETRY_MAX_ATTEMPTS;
-    const baseDelay = opts.baseDelay ?? CONSTANTS.RETRY_BASE_DELAY_MS;
-    const multiplier = opts.multiplier ?? CONSTANTS.RETRY_BACKOFF_MULTIPLIER;
-
-    let lastError;
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
-        try {
-            return await fn();
-        } catch (error) {
-            lastError = error;
-            if (attempt < maxAttempts - 1) {
-                const delay = baseDelay * Math.pow(multiplier, attempt);
-                await new Promise((resolve) => setTimeout(resolve, delay));
-            }
-        }
-    }
-    throw lastError;
-}
-
-/**
  * Creates a canvas-based space station icon for the ISS.
  * @returns {HTMLCanvasElement} Canvas element containing the ISS icon
  */

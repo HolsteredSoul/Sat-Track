@@ -40,3 +40,7 @@ ehthumbs.db
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
 .claude/worktrees/
+
+# Browser test artifacts
+test-results/
+playwright-report/

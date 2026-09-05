@@ -52,6 +52,20 @@
         }
 
         canvas { display: block; }
+        .orbital-telemetry {
+            margin: 12px 0 18px; padding: 12px 14px;
+            border: 1px solid var(--ui-border); border-left: 2px solid var(--accent);
+            border-radius: 4px 12px 12px 4px;
+            background: linear-gradient(115deg, var(--accent-wash), transparent 85%);
+            font-size: 11px; line-height: 1.7;
+        }
+        .telemetry-heading { letter-spacing: 0.13em; font-size: 9px; color: var(--ui-subtext); }
+        .telemetry-dot { display: inline-block; width: 5px; height: 5px; margin-right: 5px; border-radius: 50%; background: var(--accent); }
+        #clock-status { font-variant-numeric: tabular-nums; font-weight: 600; }
+        #data-health, #selected-epoch { color: var(--ui-subtext); }
+        #selected-epoch { border-top: 1px solid var(--ui-border); margin-top: 7px; padding-top: 7px; }
+        #selected-epoch.epoch-stale { color: var(--bad); }
+
 
         #ui-container {
             position: fixed;
@@ -728,6 +742,7 @@
 
         @media (max-width: 768px) {
             #ui-container {
+                box-sizing: border-box;
                 left: calc(20px + env(safe-area-inset-left, 0px));
                 width: calc(100% - 40px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));
                 max-height: 70vh;
@@ -832,7 +847,13 @@
         <span id="status-text">Initialising...</span>
     </div>
 
-    <h2>Live Stats</h2>
+    <section class="orbital-telemetry" aria-label="Tracking data status">
+        <div class="telemetry-heading"><span class="telemetry-dot" aria-hidden="true"></span> ORBITAL TELEMETRY</div>
+        <div id="clock-status">Acquiring clock...</div>
+        <div id="data-health">Acquiring constellations...</div>
+        <div id="selected-epoch">Select a satellite to inspect its orbital epoch</div>
+    </section>
+    <h2>Tracking Stats</h2>
     <div class="stat-grid">
         <div class="stat-item">
             <div class="stat-label">UTC Time</div>
@@ -1158,15 +1179,6 @@
     </div>
 </div>
 
-<script type="importmap">
-{
-  "imports": {
-    "three": "https://unpkg.com/three@0.172.0/build/three.module.js",
-    "three/addons/": "https://unpkg.com/three@0.172.0/examples/jsm/",
-    "satellite.js": "https://unpkg.com/satellite.js@4.1.4/dist/satellite.es.js"
-  }
-}
-</script>
 <script type="module" src="src/main.js"></script>
 
 <!-- Location Map Picker Modal -->

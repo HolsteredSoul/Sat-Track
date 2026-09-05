@@ -12,6 +12,7 @@
  */
 
 import * as satellite from 'satellite.js';
+import { validPV } from '../orbitalData.js';
 import { CONSTANTS } from '../constants.js';
 import {
     computeShadowFactorKm,
@@ -55,7 +56,9 @@ function handleInit(msg) {
             if (raw.isSimulated && src.simParams[i]) {
                 // Reconstruct SimulatedOrbit from plain parameters
                 const p = src.simParams[i];
-                satData.push(new SimulatedOrbit(p.alt, p.incDeg, p.raanDeg, p.anomalyDeg));
+                const sim = new SimulatedOrbit(p.alt, p.incDeg, p.raanDeg, p.anomalyDeg);
+                sim.epoch = p.epoch;
+                satData.push(sim);
             } else {
                 // Real satrec — already a plain object, use as-is
                 satData.push(raw);
@@ -146,7 +149,7 @@ function handleUpdate(msg) {
             } else {
                 try {
                     const pv = satellite.propagate(sat, simDate);
-                    if (pv.position && !isNaN(pv.position.x)) {
+                    if (validPV(pv)) {
                         eciPos = pv.position;
                         vX = pv.velocity.x;
                         vY = pv.velocity.y;
@@ -189,12 +192,7 @@ function handleUpdate(msg) {
 
             // ISS detection (first satellite in iss layer that matches naming)
             if (layerKey === 'iss' && issPos === null) {
-                const satName = (wLayer.satNames[i] || '').toUpperCase();
-                if (
-                    satName.includes('ISS (ZARYA)') ||
-                    satName === 'ISS' ||
-                    satName.includes('ISS (')
-                ) {
+                if (sat.catalogId === '25544' || sat.isSimulated) {
                     issPos = { x, y, z };
                     issShadow = shadow;
                 }
@@ -249,6 +247,7 @@ function handleUpdate(msg) {
 
     const result = {
         type: 'result',
+        generation: msg.generation,
         layers: resultLayers,
         issPos,
         issShadow,
