@@ -1,193 +1,107 @@
-# 🛰️ Satellite Constellation Tracker
+# Satellite Constellation Tracker
 
-A real-time 3D visualization of satellites orbiting Earth, including Starlink, ISS, GPS, Galileo, and OneWeb constellations.
+A real-time 3D view of Starlink, ISS, GPS, Galileo, OneWeb, Iridium, GLONASS, and BeiDou, with Earth day/night rendering, orbit paths, observer locations, and elevation-based pass predictions.
 
-[![CI](https://github.com/HolsteredSoul/Sat-Track/actions/workflows/ci.yml/badge.svg)](https://github.com/HolsteredSoul/Sat-Track/actions/workflows/ci.yml)
-![License](https://img.shields.io/badge/license-MIT-blue.svg)
-![HTML5](https://img.shields.io/badge/HTML5-E34F26?logo=html5&logoColor=white)
-![Three.js](https://img.shields.io/badge/Three.js-000000?logo=three.js&logoColor=white)
+[Live site](https://holsteredsoul.github.io/Sat-Track/) · [CI](https://github.com/HolsteredSoul/Sat-Track/actions/workflows/ci.yml)
 
-## 🌐 Live Demo
+## Run locally
 
-**[https://holsteredsoul.github.io/Sat-Track/](https://holsteredsoul.github.io/Sat-Track/)**
+Use Node.js 24 LTS and npm:
 
-No installation required — opens directly in any modern browser.
-
-## ✨ Features
-
-- **Real-time satellite tracking** using live TLE (Two-Line Element) data from CelesTrak
-- **Multiple constellation support**:
-    - 🌐 Starlink (~6000+ satellites)
-    - 🚀 ISS (International Space Station) with custom icon
-    - 📍 GPS navigation constellation
-    - 🇪🇺 Galileo navigation constellation
-    - 🌍 OneWeb broadband constellation
-- **Day/night Earth visualization** with realistic terminator
-- **Eclipse detection** — satellites dim when in Earth's shadow
-- **Orbit path visualization** for selected satellites
-- **Search** to find specific satellites by name
-- **Offline support** with TLE caching and simulation fallback
-- **Simulation time controls** — pause, resume, or run up to 200× speed
-- **Reset to Now** — snap the simulation clock back to real time in one click
-- **Local time display** — Live Stats shows the current simulation time in your browser's timezone
-- **Satellite size slider** — adjust dot size from 1 to 8 px to suit your screen
-- **Light / dark theme** toggle
-- **Screenshot export**
-- **Ground station** marker with pass prediction
-- **Mobile-friendly** — sidebar collapses on load so the globe is immediately visible
-
-## 🚀 Quick Start
-
-Visit **[https://holsteredsoul.github.io/Sat-Track/](https://holsteredsoul.github.io/Sat-Track/)** — that's it.
-
-To run locally, clone the repo and open `index.html` in a browser. No build step or server required.
-
-```bash
-git clone https://github.com/HolsteredSoul/Sat-Track.git
-cd Sat-Track
-open index.html   # or double-click in your file manager
+```sh
+npm ci
+npm run dev
 ```
 
-## 🎮 Controls
+Open the local URL printed by Vite, under `/Sat-Track/`. This application uses a module worker and npm dependencies, so it needs a local server; opening index.html directly is not supported.
 
-### Mouse / Touch
-
-| Control             | Action           |
-| ------------------- | ---------------- |
-| **Drag**            | Rotate the globe |
-| **Scroll / Pinch**  | Zoom in/out      |
-| **Click satellite** | Select and track |
-
-### Keyboard
-
-| Key           | Action                     |
-| ------------- | -------------------------- |
-| `H`           | Toggle UI panel            |
-| `?`           | Show keyboard shortcuts    |
-| `Space` / `P` | Pause / Resume time        |
-| `N`           | Reset simulation to now    |
-| `R`           | Reset camera view          |
-| `C`           | Cycle constellation layer  |
-| `T`           | Toggle light / dark theme  |
-| `E`           | Export screenshot          |
-| `G`           | Set ground station         |
-| `Esc`         | Deselect satellite / close |
-
-## 📊 Data Sources
-
-- **Satellite TLE Data**: [CelesTrak](https://celestrak.org/) — NORAD two-line element sets
-- **Earth Textures**: [Three Globe](https://github.com/vasturiano/three-globe) example images
-- **Time Sync**: [WorldTimeAPI](http://worldtimeapi.org/) (with TLE epoch fallback)
-
-### Data Source Badges
-
-Each constellation shows its data status:
-
-- 🟢 **LIVE** — Real-time TLE data from CelesTrak
-- 🔵 **CACHED** — Locally cached TLE data (< 1 hour old)
-- 🟠 **SIM** — Simulated orbits (realistic but not tracking real satellites)
-
-## 🛠️ Technical Details
-
-### Dependencies (loaded via CDN)
-
-- [Three.js](https://threejs.org/) v0.128.0 — 3D rendering
-- [satellite.js](https://github.com/shashwatak/satellite-js) v4.0.0 — SGP4/SDP4 orbital propagation
-
-### Browser Compatibility
-
-- Chrome 80+
-- Firefox 75+
-- Safari 13+
-- Edge 80+
-
-### Quality
-
-- **XSS Protection**: All satellite names sanitized before rendering
-- **Memory Management**: Proper disposal of Three.js resources
-- **Error Handling**: User-facing error notifications
-- **41 automated tests** via Jest (run with `npm test`)
-- **ESLint + Prettier** enforced in CI
-
-## 📐 Orbital Mechanics
-
-The tracker uses SGP4/SDP4 propagation algorithms via satellite.js:
-
-- **LEO satellites** (Starlink, ISS, OneWeb): ~90 minute orbital periods
-- **MEO satellites** (GPS, Galileo): ~12 hour orbital periods
-- **Shadow calculation**: Accurate umbra/penumbra detection using Earth's atmospheric radius
-
-### Simulated Constellation Parameters
-
-When live data is unavailable, realistic simulations use these parameters:
-
-| Constellation | Altitude (km) | Inclination (°) | Satellites |
-| ------------- | ------------- | --------------- | ---------- |
-| Starlink      | 540–570       | 53–97.6         | ~3500      |
-| OneWeb        | 1200          | 87.9            | 648        |
-| GPS           | 20,200        | 55              | 32         |
-| Galileo       | 23,222        | 56              | 24         |
-| ISS           | 420           | 51.6            | 1          |
-
-## 📁 Project Structure
-
-```
-Sat-Track/
-├── index.html              # App shell — HTML, CSS, CDN script tags
-├── src/
-│   └── StarlinkTracker.js  # All application logic
-├── tests/
-│   └── StarlinkTracker.test.js
-├── .github/
-│   └── workflows/
-│       ├── ci.yml          # Lint, format check, tests on every PR
-│       └── deploy.yml      # Auto-deploy to GitHub Pages on push to main
-├── package.json
-└── README.md
+```sh
+npm run build
+npm run preview
 ```
 
-## 🔧 Customization
+The production build is configured for the GitHub Pages `/Sat-Track/` path. For another host path, change `base` in vite.config.js. The high-resolution Earth texture follows that base path.
 
-### Adding New Constellations
+## Tracking and data
 
-1. Add the CelesTrak URL to `config.urls.tle` and `config.urls.tleJson`
-2. Add layer configuration to `this.layers` with label and color
-3. Add to `this.layerOrder` array
-4. Add UI elements (checkbox, badge) in `index.html`
-5. Add simulation parameters in `generateSimulationLayer()`
+- Native CelesTrak JSON using OMM orbital elements supports catalogue IDs up to nine digits, including newly catalogued six-digit satellites. satellite.js 6.0.2 performs SGP4/SDP4 propagation.
+- The **Orbital Telemetry** panel separates the clock source from live, saved, and simulated layer counts. Select a satellite to inspect its orbital epoch relative to the view time. A time gap over 72 hours is highlighted as a caution; it is not an accuracy estimate.
+- **LIVE** means successfully downloaded orbital elements, not measured real-time positions. **LIVE · PARTIAL** means invalid records were skipped. **SAVED** means validated cached data. **SIM** means illustrative orbits that do not track actual satellites.
+- Validated raw JSON is cached for two hours, following CelesTrak's update guidance. Existing TLE caches remain readable. Partial or invalid downloads never overwrite a known-good cache.
+- Refresh preserves saved and in-memory data on network failure and reports full, partial, or failed updates. HTTP errors stop retries; the service's Retry-After is respected with at least a two-hour cooldown in the running session. Only transport failures receive one retry. Third-party CORS proxies are no longer used.
+- Time-service failure falls back to the device clock. Pause/resume and speed changes preserve the current instant. **Reset to Now** returns to device time, unpauses, and restores 1x speed.
+- New links select real satellites by catalogue ID, surviving list reordering. Older `sat=layer:index` links still open with bounds checks, but cannot guarantee the original identity after the catalogue changes.
+- Offline recovery works when the application itself is available and has loaded. This is not an installable offline PWA: there is no service worker, and some textures and the map picker require the network.
 
-### Adjusting Constants
+Pass predictions currently indicate elevation above the observer's horizon. They do not guarantee optical or naked-eye visibility. Darkness and illumination filters are a separate planned feature.
 
-All configurable values are in the `CONSTANTS` object at the top of `StarlinkTracker.js`:
+## Controls
 
-```javascript
-const CONSTANTS = {
-    EARTH_RADIUS_KM: 6371, // Earth's radius
-    RENDER_SCALE: 0.001, // km to Three.js units
-    PHYSICS_HZ: 30, // Update frequency
-    CACHE_TTL_MS: 3600000, // Cache lifetime (1 hour)
-    POINT_SIZE_MIN: 1, // Minimum satellite dot size (px)
-    POINT_SIZE_MAX: 8 // Maximum satellite dot size (px)
-    // ... etc
-};
+Drag to rotate, scroll or pinch to zoom, and click a satellite or search result to select it. The observer can be set by map, geolocation, or manual coordinates. Point size, theme, and observer preferences are saved locally.
+
+| Key       | Action                       |
+| --------- | ---------------------------- |
+| H         | Toggle panel                 |
+| ?         | Keyboard help                |
+| Space / P | Pause or resume              |
+| N         | Reset to Now                 |
+| R         | Reset camera                 |
+| C         | Cycle enabled constellations |
+| F         | Focus selected satellite     |
+| L         | Toggle labels                |
+| T         | Toggle theme                 |
+| E         | Export screenshot            |
+| G         | Set observer location        |
+| Esc       | Deselect / close help        |
+
+Controls also include follow-camera mode, orbit paths, visibility highlighting, screenshot export, and share links. The sidebar initially collapses on narrow screens.
+
+## Verification
+
+```sh
+npm run lint
+npm run format:check
+npm test
+npm run build
+npx playwright install chromium
+npm run test:browser
 ```
 
-## 📄 License
+Browser tests build and serve the production app at `/Sat-Track/`, using deterministic data and intercepted external requests. They exercise desktop and mobile layouts, selection, sharing, refresh failure, legacy caches, observer passes, layer controls, and worker fallback. They do not depend on CelesTrak being available.
 
-MIT License — feel free to use, modify, and distribute.
+If a managed browser download is unavailable, set `PLAYWRIGHT_CHANNEL=chrome` or `msedge` in your shell to use an installed browser with an isolated test profile. For example in PowerShell: `$env:PLAYWRIGHT_CHANNEL = 'chrome'`.
 
-## 🙏 Acknowledgments
+Numerical tests compare equivalent TLE/OMM fixtures, worker/main-thread results, and the independent Vallado satellite-5 reference at epoch. Synthetic six-digit fixtures test identity handling and must not be mistaken for current live data. See [UPDATE_PLAN.md](UPDATE_PLAN.md) for the implementation scope and validation record.
 
-- [CelesTrak](https://celestrak.org/) for providing free satellite TLE data
-- [satellite.js](https://github.com/shashwatak/satellite-js) for the orbital mechanics library
-- [Three.js](https://threejs.org/) for the 3D rendering engine
+CI uses Node 24 and runs lint, formatting, unit/integration tests, a build, and Chromium browser tests. Deployment runs on pushes to main. This update does not itself authorize a deployment.
 
-## 🐛 Known Issues
+## Project structure
 
-- CORS restrictions may prevent direct TLE fetches; the app uses multiple proxy fallbacks
-- Very old cached TLE data may show inaccurate positions (refresh to update)
-- Mobile performance may vary with large constellation counts
+```text
+index.html                      App shell, styles, and accessible status text
+src/StarlinkTracker.js          Scene, controls, selection, and application integration
+src/orbitalData.js              JSON/TLE validation, identity, network, and cache
+src/trackingClock.js            Clock synchronization and simulation timing
+src/core.js                    Pure orbital and coordinate helpers
+src/constants.js               Rendering and application configuration
+src/helpers.js                 Browser utilities and saved preferences
+src/workers/propagator.worker.js  Background orbital propagation
+tests/*.test.js                Unit and integration regression tests
+tests/fixtures/                Deterministic orbital fixtures
+tests/browser/                 Production-site browser smoke tests
+public/textures/               Local high-resolution Earth texture
+```
 
----
+Three.js 0.172 supplies rendering. Leaflet 1.9.4 is loaded from a CDN for the optional map picker. Manual coordinates remain available when that picker cannot load. Preserve the documented Earth/scene coordinate convention when changing render code.
 
-Made with ☕ and curiosity about what's orbiting above us.
+## Sources and limitations
+
+- [CelesTrak orbital formats and usage guidance](https://celestrak.org/NORAD/documentation/gp-data-formats.php)
+- [satellite.js](https://github.com/shashwatak/satellite-js)
+- [Vallado SGP4 verification reference](https://celestrak.org/publications/AIAA/2006-6753/AIAA-2006-6753-Rev3.pdf)
+- [Earth textures: three-globe](https://github.com/vasturiano/three-globe)
+- [UTC service: WorldTimeAPI](https://worldtimeapi.org/)
+
+Use a current browser with WebGL and module-worker support. A synchronous propagation fallback is provided when worker startup fails. Real-device iOS safe-area behaviour still needs manual confirmation. Very old orbital elements, satellite maneuvers, and large simulation-time offsets can reduce positional accuracy. The existing large JavaScript bundle warning remains a performance follow-up.
+
+MIT License.

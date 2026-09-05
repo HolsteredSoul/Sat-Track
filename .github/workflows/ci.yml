@@ -4,14 +4,13 @@ on:
   push:
     branches: [master, main]
   pull_request:
-    branches: [master, main]
 
 jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        node-version: [18, 20]
+        node-version: [24]
 
     steps:
       - uses: actions/checkout@v4
@@ -33,3 +32,12 @@ jobs:
 
       - name: Run tests
         run: npm test
+
+      - name: Build production site
+        run: npm run build
+
+      - name: Install browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Browser smoke tests
+        run: npm run test:browser
