@@ -20,6 +20,8 @@ npm run build
 npm run preview
 ```
 
+In GitHub repository Settings → Pages, set Source to **GitHub Actions**. Publishing raw files from the main branch can overwrite the Vite deployment and break module loading. The deployment workflow verifies the published HTML and JavaScript assets after publishing.
+
 The production build is configured for the GitHub Pages `/Sat-Track/` path. For another host path, change `base` in vite.config.js. The high-resolution Earth texture follows that base path.
 
 ## Tracking and data

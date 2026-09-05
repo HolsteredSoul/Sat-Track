@@ -1,3 +1,9 @@
+# Pages deployment correction — 2026-09-05
+
+After pushing the accuracy release, the public site served unbuilt `src/main.js`. Root cause: repository Pages `build_type` was still `legacy` (main branch root), causing a second deployment to overwrite the Vite artifact. Changed the repository Pages source to `workflow` (GitHub Actions) and redeployed main. Added `.github/scripts/check-pages.mjs` to the deployment workflow: it verifies the public HTML references the expected built entry point and that the JavaScript asset is available, with bounded retries for CDN propagation. Keep Pages source set to GitHub Actions.
+
+---
+
 # Accuracy update — 2026-09-05
 
 The accuracy release is implemented on `codex/orbital-data-accuracy`, based on polish commit `586582b`. See UPDATE_PLAN.md for decisions, verification evidence, and limitations; README.md now describes the current architecture and commands. Historical polish notes follow below.
